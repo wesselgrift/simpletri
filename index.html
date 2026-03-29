@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimpleTri — Triathlon Training Planner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>SimpleTri</h1>
+    <p class="subtitle">Triathlon Training Planner</p>
+  </header>
+
+  <main>
+    <!-- Settings Panel -->
+    <section id="settings" class="settings-panel">
+      <div class="settings-grid">
+
+        <!-- Race Goal -->
+        <div class="setting-card">
+          <h3>Race Goal</h3>
+          <div class="field">
+            <label for="race-type">Distance</label>
+            <select id="race-type">
+              <option value="sprint">Sprint (750m / 20km / 5km)</option>
+              <option value="olympic">Olympic (1500m / 40km / 10km)</option>
+              <option value="half">Half Ironman (1900m / 90km / 21.1km)</option>
+              <option value="full">Ironman (3800m / 180km / 42.2km)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="race-date">Race Date</label>
+            <input type="date" id="race-date">
+          </div>
+          <div class="field">
+            <label for="plan-start">Plan Start Date</label>
+            <input type="date" id="plan-start">
+          </div>
+        </div>
+
+        <!-- Fitness Levels -->
+        <div class="setting-card">
+          <h3>Current Fitness</h3>
+          <div class="field">
+            <label for="run-benchmark">Running — 5K time (mm:ss)</label>
+            <input type="text" id="run-benchmark" placeholder="25:00">
+          </div>
+          <div class="field">
+            <label for="bike-benchmark">Cycling — FTP (watts) or avg speed (km/h)</label>
+            <input type="text" id="bike-benchmark" placeholder="180W or 28km/h">
+          </div>
+          <div class="field">
+            <label for="swim-benchmark">Swimming — 100m time (mm:ss)</label>
+            <input type="text" id="swim-benchmark" placeholder="2:00">
+          </div>
+        </div>
+
+        <!-- Weekly Schedule -->
+        <div class="setting-card">
+          <h3>Weekly Schedule</h3>
+          <div class="field">
+            <label for="run-sessions">Running sessions / week</label>
+            <input type="number" id="run-sessions" min="0" max="7" value="2">
+          </div>
+          <div class="field">
+            <label for="bike-sessions">Cycling sessions / week</label>
+            <input type="number" id="bike-sessions" min="0" max="7" value="1">
+          </div>
+          <div class="field">
+            <label for="swim-sessions">Swimming sessions / week</label>
+            <input type="number" id="swim-sessions" min="0" max="7" value="1">
+          </div>
+          <div class="field">
+            <label for="strength-sessions">Strength sessions / week</label>
+            <input type="number" id="strength-sessions" min="0" max="7" value="2">
+          </div>
+          <div class="field">
+            <label for="rest-days">Rest days / week</label>
+            <input type="number" id="rest-days" min="0" max="7" value="1">
+          </div>
+        </div>
+
+        <!-- Training Options -->
+        <div class="setting-card">
+          <h3>Training Options</h3>
+          <div class="field checkbox-field">
+            <input type="checkbox" id="polarized" checked>
+            <label for="polarized">Polarized training (80/20)</label>
+          </div>
+          <div class="field checkbox-field">
+            <input type="checkbox" id="recovery-weeks" checked>
+            <label for="recovery-weeks">Recovery week every 4th week</label>
+          </div>
+          <div class="field">
+            <label for="long-day">Long session day</label>
+            <select id="long-day">
+              <option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+              <option value="4">Friday</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button id="generate-btn" class="generate-btn">Generate Plan</button>
+    </section>
+
+    <!-- Template Editor (Step 2) -->
+    <section id="template-editor" class="template-editor hidden">
+      <div class="template-header">
+        <div>
+          <h2>Set Your Weekly Schedule</h2>
+          <p class="template-hint">Drag workouts to your preferred days. This layout will be applied to all weeks.</p>
+        </div>
+        <div class="plan-actions">
+          <button id="template-back-btn" class="btn-secondary">Back</button>
+          <button id="apply-template-btn" class="generate-btn" style="margin:0;width:auto">Apply to Calendar</button>
+        </div>
+      </div>
+      <div id="template-grid" class="plan-grid template-grid"></div>
+    </section>
+
+    <!-- Plan Display (Step 3) -->
+    <section id="plan-display" class="plan-display hidden">
+      <div class="plan-header">
+        <h2>Your Training Plan</h2>
+        <div class="plan-actions">
+          <button id="edit-template-btn" class="btn-secondary">Edit Schedule</button>
+          <button id="edit-btn" class="btn-secondary">Edit Settings</button>
+          <button id="save-btn" class="btn-secondary">Save Plan</button>
+          <button id="load-btn" class="btn-secondary">Load Plan</button>
+        </div>
+      </div>
+      <div id="plan-grid" class="plan-grid"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

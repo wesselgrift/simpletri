@@ -1,0 +1,442 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #f5f3ef;
+  --card-bg: #fff;
+  --border: #e5e2dc;
+  --text: #2d2a26;
+  --text-muted: #8a857d;
+  --accent: #3d7c6b;
+
+  --run-bg: #fef3cd;
+  --run-border: #f0d86e;
+  --run-text: #7a6b1a;
+
+  --bike-bg: #d4edda;
+  --bike-border: #82c991;
+  --bike-text: #2d6a3f;
+
+  --swim-bg: #d6eef8;
+  --swim-border: #7ec8e3;
+  --swim-text: #1a5276;
+
+  --strength-bg: #f0e6d3;
+  --strength-border: #d4b896;
+  --strength-text: #6b5532;
+
+  --rest-bg: #f0eeea;
+  --rest-border: #d9d5ce;
+  --rest-text: #8a857d;
+
+  --recovery-badge: #e8dfd1;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+/* === Header === */
+header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+/* === Settings Panel === */
+.settings-panel {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.setting-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+.setting-card h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.field {
+  margin-bottom: 0.75rem;
+}
+.field:last-child {
+  margin-bottom: 0;
+}
+.field label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+  color: var(--text);
+}
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="date"],
+.field select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.checkbox-field label {
+  margin-bottom: 0;
+}
+.checkbox-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+/* === Buttons === */
+.generate-btn {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  padding: 0.75rem 1.5rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.generate-btn:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  padding: 0.45rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s;
+}
+.btn-secondary:hover {
+  background: var(--bg);
+}
+
+/* === Plan Display === */
+.hidden {
+  display: none !important;
+}
+
+.plan-display {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.plan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.plan-header h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.plan-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* === Template Editor === */
+.template-editor {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.template-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.template-header h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.template-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+.template-grid .week-row:not(.day-header-row) {
+  min-height: 120px;
+}
+.template-grid .day-cell {
+  min-height: 100px;
+  background: var(--card-bg);
+  transition: background 0.15s;
+}
+.template-grid .day-cell:empty::after {
+  content: 'drop here';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--border);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* === Plan Grid === */
+.plan-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.week-row {
+  display: grid;
+  grid-template-columns: 120px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  min-height: 90px;
+}
+.week-row:first-child {
+  border-top: 1px solid var(--border);
+}
+
+/* Week label column */
+.week-label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.75rem;
+  border-right: 1px solid var(--border);
+  background: var(--card-bg);
+}
+.week-label .week-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+.week-label .week-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+.week-label .recovery-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--recovery-badge);
+  color: var(--text-muted);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-top: 0.3rem;
+  width: fit-content;
+}
+
+/* Day cells */
+.day-cell {
+  border-right: 1px solid var(--border);
+  padding: 0.5rem;
+  background: var(--card-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.day-cell:last-child {
+  border-right: none;
+}
+
+/* Day header row */
+.day-header-row {
+  min-height: auto;
+}
+.day-header-row .day-cell {
+  padding: 0.5rem;
+  background: var(--bg);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  justify-content: center;
+}
+.day-header-row .week-label {
+  background: var(--bg);
+}
+
+/* Workout blocks */
+.workout-block {
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.75rem;
+  border-left: 3px solid transparent;
+}
+
+.workout-block .workout-type {
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.15rem;
+}
+.workout-block .workout-detail {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.workout-block .workout-zone {
+  font-size: 0.65rem;
+  margin-top: 0.1rem;
+  opacity: 0.75;
+}
+
+/* Discipline colors */
+.workout-run {
+  background: var(--run-bg);
+  border-left-color: var(--run-border);
+  color: var(--run-text);
+}
+.workout-bike {
+  background: var(--bike-bg);
+  border-left-color: var(--bike-border);
+  color: var(--bike-text);
+}
+.workout-swim {
+  background: var(--swim-bg);
+  border-left-color: var(--swim-border);
+  color: var(--swim-text);
+}
+.workout-strength {
+  background: var(--strength-bg);
+  border-left-color: var(--strength-border);
+  color: var(--strength-text);
+}
+.workout-rest {
+  background: var(--rest-bg);
+  border-left-color: var(--rest-border);
+  color: var(--rest-text);
+}
+
+/* Progress indicator */
+.week-progress {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Draggable & completion */
+.workout-block {
+  position: relative;
+  cursor: default;
+  transition: opacity 0.15s, box-shadow 0.15s, transform 0.15s;
+  user-select: none;
+}
+.plan-display .workout-block:not(.workout-rest) {
+  cursor: pointer;
+}
+.template-grid .workout-block {
+  cursor: grab;
+}
+.workout-block.completed {
+  opacity: 0.45;
+}
+.workout-block.completed .workout-type::after {
+  content: ' \2713';
+}
+
+/* Drag states */
+.workout-block.dragging {
+  opacity: 0.35;
+  transform: scale(0.95);
+}
+.day-cell.drag-over {
+  background: #e8f5e9;
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 4px;
+}
+.day-cell.drag-over-warn {
+  background: #fff3e0;
+  box-shadow: inset 0 0 0 2px #e6a23c;
+  border-radius: 4px;
+}
+
+/* Adjacent conflict warning */
+.workout-block.adjacent-warning {
+  box-shadow: 0 0 0 2px #e6a23c;
+  border-radius: 6px;
+}
+.workout-block.adjacent-warning .workout-type::before {
+  content: '\26A0 ';
+  font-size: 0.65rem;
+}
+
+/* === Responsive === */
+@media (max-width: 900px) {
+  body {
+    padding: 1rem;
+  }
+  .week-row {
+    grid-template-columns: 80px repeat(7, 1fr);
+  }
+  .week-label {
+    padding: 0.5rem;
+  }
+  .workout-block {
+    padding: 0.3rem 0.4rem;
+  }
+}
