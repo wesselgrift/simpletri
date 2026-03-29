@@ -66,36 +66,52 @@ function getBikeLevel(benchmarkStr) {
 
 // === Duration Calculations ===
 
-// Base weekly minutes per discipline per level (starting point)
+// Base per-session minutes per discipline per level (start of plan)
 const BASE_MINUTES = {
-  run: { beginner: 15, intermediate: 20, advanced: 25 },
-  bike: { beginner: 30, intermediate: 40, advanced: 50 },
-  swim: { beginner: 20, intermediate: 25, advanced: 30 },
+  run:      { beginner: 30, intermediate: 35, advanced: 40 },
+  bike:     { beginner: 45, intermediate: 50, advanced: 60 },
+  swim:     { beginner: 30, intermediate: 35, advanced: 40 },
   strength: { beginner: 30, intermediate: 35, advanced: 40 },
 };
 
-// Peak weekly minutes (end of plan, pre-taper)
+// Peak per-session minutes (end of plan, pre-taper)
 const PEAK_MINUTES = {
   sprint: {
-    run:  { beginner: 25, intermediate: 30, advanced: 35 },
-    bike: { beginner: 45, intermediate: 55, advanced: 65 },
-    swim: { beginner: 25, intermediate: 30, advanced: 35 },
+    run:  { beginner: 35, intermediate: 40, advanced: 50 },
+    bike: { beginner: 60, intermediate: 75, advanced: 90 },
+    swim: { beginner: 35, intermediate: 40, advanced: 45 },
   },
   olympic: {
-    run:  { beginner: 35, intermediate: 40, advanced: 50 },
-    bike: { beginner: 55, intermediate: 70, advanced: 85 },
-    swim: { beginner: 30, intermediate: 35, advanced: 45 },
+    run:  { beginner: 45, intermediate: 55, advanced: 65 },
+    bike: { beginner: 75, intermediate: 90, advanced: 105 },
+    swim: { beginner: 45, intermediate: 50, advanced: 60 },
   },
   half: {
-    run:  { beginner: 50, intermediate: 60, advanced: 75 },
-    bike: { beginner: 75, intermediate: 95, advanced: 120 },
-    swim: { beginner: 35, intermediate: 40, advanced: 50 },
+    run:  { beginner: 55, intermediate: 65, advanced: 80 },
+    bike: { beginner: 90, intermediate: 110, advanced: 130 },
+    swim: { beginner: 50, intermediate: 55, advanced: 65 },
   },
   full: {
-    run:  { beginner: 65, intermediate: 80, advanced: 100 },
-    bike: { beginner: 100, intermediate: 130, advanced: 160 },
-    swim: { beginner: 40, intermediate: 50, advanced: 60 },
+    run:  { beginner: 60, intermediate: 75, advanced: 90 },
+    bike: { beginner: 105, intermediate: 130, advanced: 150 },
+    swim: { beginner: 55, intermediate: 65, advanced: 75 },
   },
+};
+
+// Long session multiplier by race distance (applied to regular session duration)
+const LONG_SESSION_MULTIPLIER = {
+  sprint:  { run: 1.5, bike: 1.5 },
+  olympic: { run: 1.7, bike: 1.8 },
+  half:    { run: 2.0, bike: 2.5 },
+  full:    { run: 2.5, bike: 3.0 },
+};
+
+// Taper length in weeks by race distance
+const TAPER_WEEKS = {
+  sprint:  1,
+  olympic: 1,
+  half:    2,
+  full:    3,
 };
 
 // === Zone Labels ===
@@ -164,19 +180,23 @@ function generatePlan(config) {
     const weekStart = new Date(start);
     weekStart.setDate(weekStart.getDate() + w * 7);
 
-    const isRecoveryWeek = recoveryWeeks && ((w + 1) % 4 === 0);
+    const taperLength = TAPER_WEEKS[raceType] || 2;
     const isLastWeek = w === totalWeeks - 1;
-    const isTaperWeek = w >= totalWeeks - 2 && totalWeeks > 4;
+    const isTaperWeek = w >= totalWeeks - taperLength && totalWeeks > taperLength + 2;
+    const isRecoveryWeek = recoveryWeeks && ((w + 1) % 4 === 0) && !isTaperWeek && !isLastWeek;
 
-    // Progress factor: 0 at start, 1 at peak (2 weeks before race)
-    const peakWeek = Math.max(0, totalWeeks - 3);
+    // Progress factor: 0 at start, 1 at peak (before taper begins)
+    const peakWeek = Math.max(0, totalWeeks - taperLength - 1);
     const progress = peakWeek > 0 ? Math.min(1, w / peakWeek) : 0;
 
     // Volume multiplier
     let volumeMultiplier = 1;
-    if (isRecoveryWeek) volumeMultiplier = 0.6;
-    else if (isLastWeek) volumeMultiplier = 0.5;
-    else if (isTaperWeek) volumeMultiplier = 0.7;
+    if (isTaperWeek || isLastWeek) {
+      const weeksUntilRace = totalWeeks - 1 - w;
+      volumeMultiplier = 0.55 + (weeksUntilRace / Math.max(1, taperLength)) * 0.25;
+    } else if (isRecoveryWeek) {
+      volumeMultiplier = 0.75;
+    }
 
     // Calculate session durations for this week
     function sessionDuration(range) {
@@ -195,13 +215,14 @@ function generatePlan(config) {
     const restDayIndices = getRestDayIndices(restDays, longDay);
 
     // Build workout pool
+    const longMult = LONG_SESSION_MULTIPLIER[raceType] || { run: 1.5, bike: 1.5 };
     const workouts = [];
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
       const isLong = i === runSessions - 1 && runSessions > 1;
       const intensity = getSessionIntensity(i, runSessions, polarized, isLong);
       workouts.push({
         discipline: 'run',
-        duration: isLong ? Math.round(runDuration * 1.3 / 5) * 5 : runDuration,
+        duration: isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration,
         intensity,
         isLong,
       });
@@ -211,7 +232,7 @@ function generatePlan(config) {
       const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong);
       workouts.push({
         discipline: 'bike',
-        duration: isLong ? Math.round(bikeDuration * 1.3 / 5) * 5 : bikeDuration,
+        duration: isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration,
         intensity,
         isLong,
       });
