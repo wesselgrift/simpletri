@@ -797,6 +797,7 @@ function validateConfig(config) {
 // This is separate from the full plan which has varying durations per week
 let currentTemplate = null; // { days: [[{discipline, intensity}], ...] }
 let currentPlanConfig = null;
+let completedWorkouts = new Set();
 let templateReturnTo = 'settings';
 let settingsReturnTo = null;
 
@@ -958,13 +959,24 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   }
 
   if (!isTemplate) {
+    const key = `${groupIdx}-${dayIdx}-${workoutIdx}`;
+    if (completedWorkouts.has(key)) {
+      block.classList.add('completed');
+    }
     block.addEventListener('click', (e) => {
       if (block.dataset.justDragged) {
         delete block.dataset.justDragged;
         return;
       }
+      const k = `${groupIdx}-${dayIdx}-${workoutIdx}`;
+      if (completedWorkouts.has(k)) {
+        completedWorkouts.delete(k);
+      } else {
+        completedWorkouts.add(k);
+      }
       block.classList.toggle('completed');
       updateProgress(block.closest('.week-row'), currentGroups[groupIdx]);
+      savePlanToStorage();
     });
   }
 
@@ -1179,6 +1191,7 @@ function savePlanToStorage() {
   const data = {
     config,
     template: currentTemplate,
+    completions: [...completedWorkouts],
     savedAt: new Date().toISOString(),
   };
   localStorage.setItem('simpletri-plan', JSON.stringify(data));
@@ -1193,6 +1206,7 @@ document.getElementById('delete-btn').addEventListener('click', () => {
   currentTemplate = null;
   currentPlanConfig = null;
   currentGroups = [];
+  completedWorkouts = new Set();
   document.getElementById('plan-grid').innerHTML = '';
 
   const today = new Date();
@@ -1239,9 +1253,14 @@ function restoreConfig(config) {
         restoreConfig(parsed.config);
         currentPlanConfig = parsed.config;
         currentTemplate = parsed.template;
+        completedWorkouts = new Set(parsed.completions || []);
         const groups = applyTemplateToFullPlan(parsed.template, parsed.config);
         renderPlan(groups);
         showSection('plan-display');
+        document.querySelectorAll('.week-row[data-group-idx]').forEach(row => {
+          const idx = parseInt(row.dataset.groupIdx);
+          if (currentGroups[idx]) updateProgress(row, currentGroups[idx]);
+        });
         return;
       }
     } catch (e) {
