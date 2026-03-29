@@ -285,12 +285,14 @@ header h1 {
 
 .fitness-badges {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0.75rem 0 0.5rem;
 }
 
 .fitness-badge {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -300,6 +302,8 @@ header h1 {
   border: 1px solid var(--border);
   background: var(--bg);
   transition: background 0.2s, border-color 0.2s;
+  overflow: hidden;
+  text-align: center;
 }
 .fitness-badge .badge-label {
   font-size: 0.6rem;
