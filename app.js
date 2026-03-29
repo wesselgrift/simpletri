@@ -4,6 +4,13 @@ const DAYS = ['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'];
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // Race distances in km: [swim, bike, run]
+const RACE_LABELS = {
+  sprint: 'Sprint',
+  olympic: 'Olympic',
+  half: 'Half Ironman',
+  full: 'Ironman',
+};
+
 const RACE_DISTANCES = {
   sprint:  { swim: 0.75,  bike: 20,  run: 5 },
   olympic: { swim: 1.5,   bike: 40,  run: 10 },
@@ -689,6 +696,7 @@ function validateConfig(config) {
 // This is separate from the full plan which has varying durations per week
 let currentTemplate = null; // { days: [[{discipline, intensity}], ...] }
 let currentPlanConfig = null;
+let templateReturnTo = 'settings';
 
 function generateTemplate(config) {
   // Generate a single "week 1" to use as the editable template
@@ -978,6 +986,16 @@ function showSection(id) {
   ['settings', 'template-editor', 'plan-display'].forEach(s => {
     document.getElementById(s).classList.toggle('hidden', s !== id);
   });
+  if (id === 'plan-display' && currentPlanConfig) {
+    const label = RACE_LABELS[currentPlanConfig.raceType] || currentPlanConfig.raceType;
+    const raceDate = new Date(currentPlanConfig.raceDate);
+    const startDate = new Date(currentPlanConfig.planStart);
+    const totalWeeks = Math.max(1, Math.floor((raceDate - startDate) / (1000 * 60 * 60 * 24 * 7)));
+    const raceDateStr = raceDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    document.getElementById('plan-title').textContent = `Your ${label} plan`;
+    document.getElementById('plan-subtitle').textContent = `${raceDateStr} · ${totalWeeks} weeks of training`;
+  }
 }
 
 // Step 1 → Step 2: Generate template
@@ -998,14 +1016,15 @@ document.getElementById('generate-btn').addEventListener('click', () => {
   }
 
   renderTemplate(template);
+  templateReturnTo = 'settings';
   showSection('template-editor');
 
   localStorage.setItem('simpletri-config', JSON.stringify(config));
 });
 
-// Step 2 → Step 1: Back
+// Step 2 → Back (settings or plan, depending on where we came from)
 document.getElementById('template-back-btn').addEventListener('click', () => {
-  showSection('settings');
+  showSection(templateReturnTo || 'settings');
 });
 
 // Step 2 → Step 3: Apply template to full calendar
@@ -1016,8 +1035,7 @@ document.getElementById('apply-template-btn').addEventListener('click', () => {
   renderPlan(groups);
   showSection('plan-display');
 
-  // Save template to localStorage
-  localStorage.setItem('simpletri-template', JSON.stringify(currentTemplate));
+  savePlanToStorage();
 });
 
 // Step 3 → Step 2: Edit schedule
@@ -1025,6 +1043,7 @@ document.getElementById('edit-template-btn').addEventListener('click', () => {
   if (currentTemplate) {
     renderTemplate(currentTemplate);
   }
+  templateReturnTo = 'plan-display';
   showSection('template-editor');
 });
 
@@ -1033,39 +1052,41 @@ document.getElementById('edit-btn').addEventListener('click', () => {
   showSection('settings');
 });
 
-document.getElementById('save-btn').addEventListener('click', () => {
-  const config = getConfig();
+function savePlanToStorage() {
+  const config = currentPlanConfig || getConfig();
   const data = {
     config,
     template: currentTemplate,
-    groups: currentGroups,
     savedAt: new Date().toISOString(),
   };
   localStorage.setItem('simpletri-plan', JSON.stringify(data));
-  alert('Plan saved!');
+  localStorage.setItem('simpletri-config', JSON.stringify(config));
+}
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  savePlanToStorage();
+  const btn = document.getElementById('save-btn');
+  btn.textContent = 'Saved!';
+  setTimeout(() => { btn.textContent = 'Save Plan'; }, 1500);
 });
 
-document.getElementById('load-btn').addEventListener('click', () => {
-  const data = localStorage.getItem('simpletri-plan');
-  if (!data) {
-    alert('No saved plan found.');
-    return;
-  }
-  const parsed = JSON.parse(data);
+document.getElementById('delete-btn').addEventListener('click', () => {
+  if (!confirm('Delete your plan and all saved data?')) return;
+  localStorage.removeItem('simpletri-plan');
+  localStorage.removeItem('simpletri-config');
+  localStorage.removeItem('simpletri-template');
+  currentTemplate = null;
+  currentPlanConfig = null;
+  currentGroups = [];
+  document.getElementById('plan-grid').innerHTML = '';
 
-  // Restore config
-  if (parsed.config) {
-    restoreConfig(parsed.config);
-    currentPlanConfig = parsed.config;
-  }
+  const today = new Date();
+  const raceDate = new Date(today);
+  raceDate.setDate(raceDate.getDate() + 8 * 7);
+  document.getElementById('plan-start').value = today.toISOString().split('T')[0];
+  document.getElementById('race-date').value = raceDate.toISOString().split('T')[0];
 
-  // Restore template + re-apply
-  if (parsed.template && parsed.config) {
-    currentTemplate = parsed.template;
-    const groups = applyTemplateToFullPlan(parsed.template, parsed.config);
-    renderPlan(groups);
-    showSection('plan-display');
-  }
+  showSection('settings');
 });
 
 function restoreConfig(config) {
@@ -1085,16 +1106,35 @@ function restoreConfig(config) {
   if (config.longDay != null) document.getElementById('long-day').value = config.longDay;
 }
 
-// === Init: set default dates ===
+// === Init ===
 (function init() {
   const today = new Date();
   const raceDate = new Date(today);
-  raceDate.setDate(raceDate.getDate() + 8 * 7); // 8 weeks from now
+  raceDate.setDate(raceDate.getDate() + 8 * 7);
 
   document.getElementById('plan-start').value = today.toISOString().split('T')[0];
   document.getElementById('race-date').value = raceDate.toISOString().split('T')[0];
 
-  // Load saved config if exists
+  // Auto-restore saved plan if it exists
+  const savedPlan = localStorage.getItem('simpletri-plan');
+  if (savedPlan) {
+    try {
+      const parsed = JSON.parse(savedPlan);
+      if (parsed.config && parsed.template) {
+        restoreConfig(parsed.config);
+        currentPlanConfig = parsed.config;
+        currentTemplate = parsed.template;
+        const groups = applyTemplateToFullPlan(parsed.template, parsed.config);
+        renderPlan(groups);
+        showSection('plan-display');
+        return;
+      }
+    } catch (e) {
+      // fall through to default settings view
+    }
+  }
+
+  // Otherwise just restore config inputs
   const savedConfig = localStorage.getItem('simpletri-config');
   if (savedConfig) {
     try {

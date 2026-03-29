@@ -169,6 +169,13 @@ header h1 {
 .btn-secondary:hover {
   background: var(--bg);
 }
+.btn-danger {
+  color: #9a3333;
+  border-color: #e0c4c4;
+}
+.btn-danger:hover {
+  background: #fdf0f0;
+}
 
 /* === Plan Display === */
 .hidden {
@@ -191,6 +198,11 @@ header h1 {
 .plan-header h2 {
   font-size: 1.15rem;
   font-weight: 600;
+}
+.plan-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
 }
 .plan-actions {
   display: flex;

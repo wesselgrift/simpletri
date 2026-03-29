@@ -125,12 +125,15 @@
     <!-- Plan Display (Step 3) -->
     <section id="plan-display" class="plan-display hidden">
       <div class="plan-header">
-        <h2>Your Training Plan</h2>
+        <div id="plan-title-wrap">
+          <h2 id="plan-title">Your Training Plan</h2>
+          <p id="plan-subtitle" class="plan-subtitle"></p>
+        </div>
         <div class="plan-actions">
           <button id="edit-template-btn" class="btn-secondary">Edit Schedule</button>
           <button id="edit-btn" class="btn-secondary">Edit Settings</button>
           <button id="save-btn" class="btn-secondary">Save Plan</button>
-          <button id="load-btn" class="btn-secondary">Load Plan</button>
+          <button id="delete-btn" class="btn-secondary btn-danger">Delete Plan</button>
         </div>
       </div>
       <div id="plan-grid" class="plan-grid"></div>
