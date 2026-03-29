@@ -1847,8 +1847,23 @@ function setupFitnessListeners() {
   setupBenchmarkToggle();
   setupFitnessListeners();
 
-  // Auto-restore saved plan if it exists
+  // Show intro splash once for new users
+  const introSeen = localStorage.getItem('simpletri-intro-seen');
+  const splash = document.getElementById('intro-splash');
   const savedPlan = localStorage.getItem('simpletri-plan');
+  if (!introSeen && !savedPlan && splash) {
+    splash.classList.remove('hidden');
+    document.getElementById('intro-start-btn').addEventListener('click', () => {
+      splash.style.animation = 'introFadeOut 0.3s ease forwards';
+      setTimeout(() => {
+        splash.classList.add('hidden');
+        splash.style.animation = '';
+      }, 300);
+      localStorage.setItem('simpletri-intro-seen', '1');
+    });
+  }
+
+  // Auto-restore saved plan if it exists
   if (savedPlan) {
     try {
       const parsed = JSON.parse(savedPlan);
