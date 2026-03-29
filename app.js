@@ -719,6 +719,71 @@ function renderPlan(groups) {
 
     grid.appendChild(row);
   });
+
+  // Race day row
+  if (currentPlanConfig) {
+    const raceDate = new Date(currentPlanConfig.raceDate);
+    const raceDow = raceDate.getDay();
+    const raceDayIdx = raceDow === 0 ? 6 : raceDow - 1;
+    const raceType = currentPlanConfig.raceType;
+    const dist = RACE_DISTANCES[raceType] || RACE_DISTANCES.olympic;
+    const raceLabel = RACE_LABELS[raceType] || raceType;
+
+    const raceRow = document.createElement('div');
+    raceRow.className = 'week-row race-row';
+
+    const raceWeekLabel = document.createElement('div');
+    raceWeekLabel.className = 'week-label race-week-label';
+
+    const raceName = document.createElement('div');
+    raceName.className = 'week-name';
+    raceName.textContent = 'Race Day';
+    raceWeekLabel.appendChild(raceName);
+
+    const raceDateEl = document.createElement('div');
+    raceDateEl.className = 'week-date';
+    const rd = raceDate;
+    raceDateEl.textContent = `${rd.getDate()} ${MONTH_SHORT[rd.getMonth()]}`;
+    raceWeekLabel.appendChild(raceDateEl);
+
+    const raceBadge = document.createElement('div');
+    raceBadge.className = 'race-badge';
+    raceBadge.textContent = raceLabel.toUpperCase();
+    raceWeekLabel.appendChild(raceBadge);
+
+    raceRow.appendChild(raceWeekLabel);
+
+    for (let d = 0; d < 7; d++) {
+      const cell = document.createElement('div');
+      cell.className = 'day-cell';
+
+      if (d === raceDayIdx) {
+        const block = document.createElement('div');
+        block.className = 'workout-block race-block';
+
+        const flag = document.createElement('div');
+        flag.className = 'race-flag';
+        flag.textContent = '\uD83C\uDFC1';
+        block.appendChild(flag);
+
+        const title = document.createElement('div');
+        title.className = 'workout-type';
+        title.textContent = raceLabel;
+        block.appendChild(title);
+
+        const distances = document.createElement('div');
+        distances.className = 'workout-detail';
+        distances.textContent = `${dist.swim}km / ${dist.bike}km / ${dist.run}km`;
+        block.appendChild(distances);
+
+        cell.appendChild(block);
+      }
+
+      raceRow.appendChild(cell);
+    }
+
+    grid.appendChild(raceRow);
+  }
 }
 
 // === Drag and Drop ===

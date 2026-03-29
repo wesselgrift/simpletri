@@ -471,6 +471,59 @@ header h1 {
   width: fit-content;
 }
 
+/* Race row */
+.race-row {
+  min-height: 80px;
+  background: linear-gradient(135deg, #f9f7f3 0%, #f0eeea 100%);
+}
+.race-week-label {
+  background: var(--accent);
+  color: #fff;
+}
+.race-week-label .week-name {
+  color: #fff;
+}
+.race-week-label .week-date {
+  color: rgba(255, 255, 255, 0.8);
+}
+.race-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-top: 0.3rem;
+  width: fit-content;
+  font-weight: 600;
+}
+.race-block {
+  background: var(--accent);
+  border-left-color: #2d6354;
+  color: #fff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.6rem;
+}
+.race-block .workout-type {
+  color: #fff;
+  font-size: 0.8rem;
+}
+.race-block .workout-detail {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.7rem;
+}
+.race-flag {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
 /* Day cells */
 .day-cell {
   border-right: 1px solid var(--border);
