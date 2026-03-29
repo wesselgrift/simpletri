@@ -784,6 +784,11 @@ function renderPlan(groups) {
 
     grid.appendChild(raceRow);
   }
+
+  grid.querySelectorAll('.week-row[data-group-idx]').forEach(row => {
+    const idx = parseInt(row.dataset.groupIdx);
+    if (currentGroups[idx]) updateProgress(row, currentGroups[idx]);
+  });
 }
 
 // === Drag and Drop (mouse-based for full cursor control) ===
@@ -1064,6 +1069,48 @@ function updateProgress(row, group) {
     const pct = total > 0 ? (completed.length / total) * 100 : 0;
     fill.style.width = `${pct}%`;
     fill.classList.toggle('progress-complete', completed.length + skipped.length === total && total > 0);
+  }
+  updateOverallProgress();
+}
+
+function updateOverallProgress() {
+  const planGrid = document.getElementById('plan-grid');
+  if (!planGrid) return;
+  let totalAll = 0;
+  let completedAll = 0;
+  let skippedAll = 0;
+  currentGroups.forEach((group, idx) => {
+    const row = planGrid.querySelector(`.week-row[data-group-idx="${idx}"]`);
+    if (!row) return;
+    totalAll += group.template.totalSessions;
+    completedAll += row.querySelectorAll('.workout-block.completed:not(.workout-rest)').length;
+    skippedAll += row.querySelectorAll('.workout-block.skipped:not(.workout-rest)').length;
+  });
+
+  const resolved = completedAll + skippedAll;
+  const progressPct = totalAll > 0 ? Math.round((completedAll / totalAll) * 100) : 0;
+
+  const progressText = document.getElementById('overall-progress-text');
+  if (progressText) {
+    progressText.textContent = resolved > 0
+      ? `${completedAll}/${totalAll} (${progressPct}%)`
+      : '0%';
+  }
+  const progressFill = document.getElementById('overall-progress-fill');
+  if (progressFill) {
+    progressFill.style.width = `${progressPct}%`;
+    progressFill.classList.toggle('progress-complete', completedAll === totalAll && totalAll > 0);
+  }
+
+  const consistencyPct = resolved > 0 ? Math.round((completedAll / resolved) * 100) : 0;
+  const consistencyText = document.getElementById('overall-consistency-text');
+  if (consistencyText) {
+    consistencyText.textContent = resolved > 0 ? `${consistencyPct}%` : '—';
+  }
+  const consistencyFill = document.getElementById('overall-consistency-fill');
+  if (consistencyFill) {
+    consistencyFill.style.width = resolved > 0 ? `${consistencyPct}%` : '0%';
+    consistencyFill.classList.toggle('progress-complete', consistencyPct === 100 && resolved > 0);
   }
 }
 
@@ -1756,10 +1803,6 @@ function setupFitnessListeners() {
         renderPlan(groups);
         updateFitnessBadges();
         showSection('plan-display');
-        document.querySelectorAll('.week-row[data-group-idx]').forEach(row => {
-          const idx = parseInt(row.dataset.groupIdx);
-          if (currentGroups[idx]) updateProgress(row, currentGroups[idx]);
-        });
         return;
       }
     } catch (e) {
