@@ -114,6 +114,13 @@ const TAPER_WEEKS = {
   full:    3,
 };
 
+// Training phase splits (fraction of pre-taper weeks)
+const PHASE_SPLITS = {
+  base:  0.40,
+  build: 0.35,
+  peak:  0.25,
+};
+
 // === Zone Labels ===
 
 function getZoneLabel(intensity, discipline) {
@@ -198,6 +205,18 @@ function generatePlan(config) {
       volumeMultiplier = 0.75;
     }
 
+    // Determine training phase
+    const trainingWeeks = totalWeeks - taperLength;
+    let phase = 'base';
+    if (isTaperWeek || isLastWeek) {
+      phase = 'taper';
+    } else {
+      const baseEnd = Math.floor(trainingWeeks * PHASE_SPLITS.base);
+      const buildEnd = baseEnd + Math.floor(trainingWeeks * PHASE_SPLITS.build);
+      if (w >= buildEnd) phase = 'peak';
+      else if (w >= baseEnd) phase = 'build';
+    }
+
     // Calculate session durations for this week
     function sessionDuration(range) {
       const mins = range.base + (range.peak - range.base) * progress;
@@ -219,7 +238,7 @@ function generatePlan(config) {
     const workouts = [];
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
       const isLong = i === runSessions - 1 && runSessions > 1;
-      const intensity = getSessionIntensity(i, runSessions, polarized, isLong);
+      const intensity = getSessionIntensity(i, runSessions, polarized, isLong, phase);
       workouts.push({
         discipline: 'run',
         duration: isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration,
@@ -229,7 +248,7 @@ function generatePlan(config) {
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
       const isLong = i === bikeSessions - 1;
-      const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong);
+      const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase);
       workouts.push({
         discipline: 'bike',
         duration: isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration,
@@ -238,7 +257,7 @@ function generatePlan(config) {
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
-      const intensity = getSessionIntensity(i, swimSessions, polarized, false);
+      const intensity = getSessionIntensity(i, swimSessions, polarized, false, phase);
       workouts.push({
         discipline: 'swim',
         duration: swimDuration,
@@ -377,6 +396,7 @@ function generatePlan(config) {
       weekStart,
       isRecovery: isRecoveryWeek,
       isTaper: isTaperWeek || isLastWeek,
+      phase,
       days: daySlots,
       totalSessions,
     });
@@ -385,15 +405,29 @@ function generatePlan(config) {
   return groupWeeks(weeks);
 }
 
-function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong) {
+function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, phase) {
   if (!polarized) return 'easy';
-  if (isLong) return 'easy'; // Long sessions are always easy/aerobic
+  if (isLong) return 'easy';
   if (totalSessions <= 1) return 'easy';
 
-  // 80/20 rule: one hard session per discipline per week
-  // First non-long session gets the intensity work
-  if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
-  if (sessionIndex === 2 && totalSessions >= 4) return 'interval';
+  if (phase === 'base') return 'easy';
+
+  if (phase === 'build') {
+    if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
+    return 'easy';
+  }
+
+  if (phase === 'peak') {
+    if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
+    if (sessionIndex === 2 && totalSessions >= 4) return 'interval';
+    return 'easy';
+  }
+
+  if (phase === 'taper') {
+    if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
+    return 'easy';
+  }
+
   return 'easy';
 }
 
@@ -533,6 +567,12 @@ function renderPlan(groups) {
       badge.className = 'recovery-badge';
       badge.textContent = 'TAPER';
       label.appendChild(badge);
+    }
+    if (!group.template.isRecovery && !group.template.isTaper && group.template.phase) {
+      const phaseBadge = document.createElement('div');
+      phaseBadge.className = 'phase-badge';
+      phaseBadge.textContent = group.template.phase.toUpperCase();
+      label.appendChild(phaseBadge);
     }
 
     row.appendChild(label);
