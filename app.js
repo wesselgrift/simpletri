@@ -1481,8 +1481,12 @@ function applyTemplateToFullPlan(template, config) {
         });
       }
 
-      // Any leftover workouts (from recovery weeks with fewer sessions) — skip them
-      // Update total sessions
+      // Fill empty days with rest (recovery/taper weeks may have fewer sessions than template)
+      for (let d = 0; d < 7; d++) {
+        if (week.days[d].length === 0) {
+          week.days[d].push({ discipline: 'rest', duration: 0, intensity: 'rest' });
+        }
+      }
       week.totalSessions = week.days.flat().filter(w => w.discipline !== 'rest').length;
     });
 
