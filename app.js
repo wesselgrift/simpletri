@@ -708,6 +708,11 @@ function renderPlan(groups) {
       cell.dataset.groupIdx = groupIdx;
       cell.dataset.dayIdx = d;
 
+      cell.addEventListener('dragover', handleDragOver);
+      cell.addEventListener('dragenter', handleDragEnter);
+      cell.addEventListener('dragleave', handleDragLeave);
+      cell.addEventListener('drop', handlePlanDrop);
+
       const dayWorkouts = group.template.days[d];
       dayWorkouts.forEach((workout, workoutIdx) => {
         const block = createWorkoutBlock(workout, groupIdx, d, workoutIdx, false);
@@ -826,18 +831,15 @@ function handleDragEnter(e) {
   const cell = e.currentTarget;
   if (!dragData) return;
 
-  // Check if this would cause an adjacent conflict
   const targetGroup = parseInt(cell.dataset.groupIdx);
   const targetDay = parseInt(cell.dataset.dayIdx);
 
-  if (targetGroup === dragData.groupIdx) {
-    const group = currentGroups[targetGroup];
-    const workout = group.template.days[dragData.dayIdx][dragData.workoutIdx];
-    const hasConflict = wouldCauseAdjacentConflict(group, targetDay, workout.discipline, dragData.dayIdx);
-    cell.classList.add(hasConflict ? 'drag-over-warn' : 'drag-over');
-  } else {
-    cell.classList.add('drag-over');
-  }
+  if (targetGroup !== dragData.groupIdx) return;
+
+  const group = currentGroups[targetGroup];
+  const workout = group.template.days[dragData.dayIdx][dragData.workoutIdx];
+  const hasConflict = wouldCauseAdjacentConflict(group, targetDay, workout.discipline, dragData.dayIdx);
+  cell.classList.add(hasConflict ? 'drag-over-warn' : 'drag-over');
 }
 
 function handleDragLeave(e) {
@@ -845,9 +847,103 @@ function handleDragLeave(e) {
   e.currentTarget.classList.remove('drag-over-warn');
 }
 
-function handleDrop(e) {
-  // No-op for full calendar view (editing is done in the template editor)
+function handlePlanDrop(e) {
   e.preventDefault();
+  const cell = e.currentTarget;
+  cell.classList.remove('drag-over');
+  cell.classList.remove('drag-over-warn');
+
+  if (!dragData) return;
+
+  const targetGroupIdx = parseInt(cell.dataset.groupIdx);
+  const targetDayIdx = parseInt(cell.dataset.dayIdx);
+  const sourceGroupIdx = dragData.groupIdx;
+  const sourceDayIdx = dragData.dayIdx;
+  const workoutIdx = dragData.workoutIdx;
+
+  if (targetGroupIdx !== sourceGroupIdx) return;
+  if (targetDayIdx === sourceDayIdx) return;
+
+  const groupIdx = sourceGroupIdx;
+  const days = currentGroups[groupIdx].template.days;
+
+  // Map workout objects to their old keys before the move
+  const oldKeyMap = new Map();
+  for (let d = 0; d < 7; d++) {
+    days[d].forEach((w, wi) => {
+      oldKeyMap.set(w, `${groupIdx}-${d}-${wi}`);
+    });
+  }
+
+  const workout = days[sourceDayIdx][workoutIdx];
+  const targetHasRest = days[targetDayIdx].some(w => w.discipline === 'rest');
+  const sourceIsRest = workout.discipline === 'rest';
+
+  if (sourceIsRest) {
+    const targetWorkouts = days[targetDayIdx].splice(0);
+    const sourceRest = days[sourceDayIdx].splice(workoutIdx, 1);
+    days[targetDayIdx].push(...sourceRest);
+    days[sourceDayIdx].push(...targetWorkouts);
+  } else if (targetHasRest) {
+    const restIdx = days[targetDayIdx].findIndex(w => w.discipline === 'rest');
+    days[targetDayIdx].splice(restIdx, 1);
+    const [movedWorkout] = days[sourceDayIdx].splice(workoutIdx, 1);
+    days[targetDayIdx].push(movedWorkout);
+  } else {
+    const [movedWorkout] = days[sourceDayIdx].splice(workoutIdx, 1);
+    days[targetDayIdx].push(movedWorkout);
+  }
+
+  for (let d = 0; d < 7; d++) {
+    if (days[d].length === 0) {
+      days[d].push({ discipline: 'rest', duration: 0, intensity: 'rest' });
+    }
+  }
+
+  // Migrate completion/skipped keys using object identity
+  const migratedCompleted = new Set();
+  const migratedSkipped = new Set();
+  for (let d = 0; d < 7; d++) {
+    days[d].forEach((w, wi) => {
+      const newKey = `${groupIdx}-${d}-${wi}`;
+      const oldKey = oldKeyMap.get(w);
+      if (oldKey) {
+        if (completedWorkouts.has(oldKey)) migratedCompleted.add(newKey);
+        if (skippedWorkouts.has(oldKey)) migratedSkipped.add(newKey);
+        completedWorkouts.delete(oldKey);
+        skippedWorkouts.delete(oldKey);
+      }
+    });
+  }
+  migratedCompleted.forEach(k => completedWorkouts.add(k));
+  migratedSkipped.forEach(k => skippedWorkouts.add(k));
+
+  currentGroups[groupIdx].template.totalSessions =
+    days.flat().filter(w => w.discipline !== 'rest').length;
+
+  weekOverrides[groupIdx] = JSON.parse(JSON.stringify(days));
+
+  rerenderWeekRow(groupIdx);
+  savePlanToStorage();
+}
+
+function rerenderWeekRow(groupIdx) {
+  const row = document.querySelector(`.week-row[data-group-idx="${groupIdx}"]`);
+  if (!row) return;
+
+  const group = currentGroups[groupIdx];
+  const dayCells = row.querySelectorAll('.day-cell');
+
+  dayCells.forEach((cell, d) => {
+    cell.innerHTML = '';
+    const dayWorkouts = group.template.days[d];
+    dayWorkouts.forEach((workout, workoutIdx) => {
+      const block = createWorkoutBlock(workout, groupIdx, d, workoutIdx, false);
+      cell.appendChild(block);
+    });
+  });
+
+  updateProgress(row, group);
 }
 
 // === Adjacency conflict checking ===
@@ -892,16 +988,22 @@ function checkAdjacentConflicts() {
 
 function updateProgress(row, group) {
   const completed = row.querySelectorAll('.workout-block.completed:not(.workout-rest)');
+  const skipped = row.querySelectorAll('.workout-block.skipped:not(.workout-rest)');
   const total = group.template.totalSessions;
+  const effective = total - skipped.length;
   const meta = row.querySelector('.week-progress');
   if (meta) {
-    meta.textContent = `${completed.length}/${total}`;
+    let text = `${completed.length}/${effective}`;
+    if (skipped.length > 0) {
+      text += ` · ${skipped.length} skipped`;
+    }
+    meta.textContent = text;
   }
   const fill = row.querySelector('.progress-fill');
   if (fill) {
-    const pct = total > 0 ? (completed.length / total) * 100 : 0;
+    const pct = effective > 0 ? (completed.length / effective) * 100 : 0;
     fill.style.width = `${pct}%`;
-    fill.classList.toggle('progress-complete', completed.length === total && total > 0);
+    fill.classList.toggle('progress-complete', completed.length === effective && effective > 0);
   }
 }
 
@@ -967,6 +1069,8 @@ function validateConfig(config) {
 let currentTemplate = null; // { days: [[{discipline, intensity}], ...] }
 let currentPlanConfig = null;
 let completedWorkouts = new Set();
+let skippedWorkouts = new Set();
+let weekOverrides = {};
 let templateReturnTo = 'settings';
 let settingsReturnTo = null;
 
@@ -1088,11 +1192,9 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   block.dataset.dayIdx = dayIdx;
   block.dataset.workoutIdx = workoutIdx;
 
-  if (isTemplate) {
-    block.draggable = true;
-    block.addEventListener('dragstart', handleDragStart);
-    block.addEventListener('dragend', handleDragEnd);
-  }
+  block.draggable = true;
+  block.addEventListener('dragstart', handleDragStart);
+  block.addEventListener('dragend', handleDragEnd);
 
   const typeEl = document.createElement('div');
   typeEl.className = 'workout-type';
@@ -1127,10 +1229,13 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
     block.appendChild(suggEl);
   }
 
-  if (!isTemplate) {
+  if (!isTemplate && workout.discipline !== 'rest') {
     const key = `${groupIdx}-${dayIdx}-${workoutIdx}`;
     if (completedWorkouts.has(key)) {
       block.classList.add('completed');
+    }
+    if (skippedWorkouts.has(key)) {
+      block.classList.add('skipped');
     }
     block.addEventListener('click', (e) => {
       if (block.dataset.justDragged) {
@@ -1138,12 +1243,22 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
         return;
       }
       const k = `${groupIdx}-${dayIdx}-${workoutIdx}`;
-      if (completedWorkouts.has(k)) {
-        completedWorkouts.delete(k);
-      } else {
+      const isCompleted = completedWorkouts.has(k);
+      const isSkipped = skippedWorkouts.has(k);
+
+      if (!isCompleted && !isSkipped) {
         completedWorkouts.add(k);
+        block.classList.add('completed');
+      } else if (isCompleted) {
+        completedWorkouts.delete(k);
+        block.classList.remove('completed');
+        skippedWorkouts.add(k);
+        block.classList.add('skipped');
+      } else {
+        skippedWorkouts.delete(k);
+        block.classList.remove('skipped');
       }
-      block.classList.toggle('completed');
+
       updateProgress(block.closest('.week-row'), currentGroups[groupIdx]);
       savePlanToStorage();
     });
@@ -1362,6 +1477,8 @@ function savePlanToStorage() {
     config,
     template: currentTemplate,
     completions: [...completedWorkouts],
+    skipped: [...skippedWorkouts],
+    weekOverrides,
     savedAt: new Date().toISOString(),
   };
   localStorage.setItem('simpletri-plan', JSON.stringify(data));
@@ -1377,6 +1494,8 @@ document.getElementById('delete-btn').addEventListener('click', () => {
   currentPlanConfig = null;
   currentGroups = [];
   completedWorkouts = new Set();
+  skippedWorkouts = new Set();
+  weekOverrides = {};
   document.getElementById('plan-grid').innerHTML = '';
 
   const today = new Date();
@@ -1563,7 +1682,16 @@ function setupFitnessListeners() {
         currentPlanConfig = migratedConfig;
         currentTemplate = parsed.template;
         completedWorkouts = new Set(parsed.completions || []);
+        skippedWorkouts = new Set(parsed.skipped || []);
+        weekOverrides = parsed.weekOverrides || {};
         const groups = applyTemplateToFullPlan(parsed.template, parsed.config);
+        Object.entries(weekOverrides).forEach(([idx, days]) => {
+          const i = parseInt(idx);
+          if (groups[i]) {
+            groups[i].template.days = days;
+            groups[i].template.totalSessions = days.flat().filter(w => w.discipline !== 'rest').length;
+          }
+        });
         renderPlan(groups);
         updateFitnessBadges();
         showSection('plan-display');
