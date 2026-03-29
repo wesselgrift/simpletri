@@ -697,6 +697,7 @@ function validateConfig(config) {
 let currentTemplate = null; // { days: [[{discipline, intensity}], ...] }
 let currentPlanConfig = null;
 let templateReturnTo = 'settings';
+let settingsReturnTo = null;
 
 function generateTemplate(config) {
   // Generate a single "week 1" to use as the editable template
@@ -986,6 +987,13 @@ function showSection(id) {
   ['settings', 'template-editor', 'plan-display'].forEach(s => {
     document.getElementById(s).classList.toggle('hidden', s !== id);
   });
+  const backBtn = document.getElementById('settings-back-btn');
+  if (id === 'settings' && settingsReturnTo) {
+    backBtn.classList.remove('hidden');
+  } else {
+    backBtn.classList.add('hidden');
+    settingsReturnTo = null;
+  }
   if (id === 'plan-display' && currentPlanConfig) {
     const label = RACE_LABELS[currentPlanConfig.raceType] || currentPlanConfig.raceType;
     const raceDate = new Date(currentPlanConfig.raceDate);
@@ -1049,7 +1057,13 @@ document.getElementById('edit-template-btn').addEventListener('click', () => {
 
 // Step 3 → Step 1: Edit settings
 document.getElementById('edit-btn').addEventListener('click', () => {
+  settingsReturnTo = 'plan-display';
   showSection('settings');
+});
+
+// Settings → Back to plan
+document.getElementById('settings-back-btn').addEventListener('click', () => {
+  showSection(settingsReturnTo || 'plan-display');
 });
 
 function savePlanToStorage() {
