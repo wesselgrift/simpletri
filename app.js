@@ -1051,10 +1051,9 @@ function updateProgress(row, group) {
   const completed = row.querySelectorAll('.workout-block.completed:not(.workout-rest)');
   const skipped = row.querySelectorAll('.workout-block.skipped:not(.workout-rest)');
   const total = group.template.totalSessions;
-  const effective = total - skipped.length;
   const meta = row.querySelector('.week-progress');
   if (meta) {
-    let text = `${completed.length}/${effective}`;
+    let text = `${completed.length}/${total}`;
     if (skipped.length > 0) {
       text += ` · ${skipped.length} skipped`;
     }
@@ -1062,9 +1061,9 @@ function updateProgress(row, group) {
   }
   const fill = row.querySelector('.progress-fill');
   if (fill) {
-    const pct = effective > 0 ? (completed.length / effective) * 100 : 0;
+    const pct = total > 0 ? (completed.length / total) * 100 : 0;
     fill.style.width = `${pct}%`;
-    fill.classList.toggle('progress-complete', completed.length === effective && effective > 0);
+    fill.classList.toggle('progress-complete', completed.length + skipped.length === total && total > 0);
   }
 }
 
