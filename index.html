@@ -40,20 +40,98 @@
           </div>
         </div>
 
-        <!-- Fitness Levels -->
-        <div class="setting-card">
+        <!-- Fitness Profile -->
+        <div class="setting-card fitness-card">
           <h3>Current Fitness</h3>
+
           <div class="field">
-            <label for="run-benchmark">Running — 5K time (mm:ss)</label>
-            <input type="text" id="run-benchmark" placeholder="25:00">
+            <label for="tri-experience">Triathlon experience</label>
+            <select id="tri-experience">
+              <option value="" disabled selected>Select…</option>
+              <option value="new">New to triathlon</option>
+              <option value="lt1">Less than 1 year</option>
+              <option value="1-3">1–3 years</option>
+              <option value="3+">3+ years</option>
+            </select>
           </div>
           <div class="field">
-            <label for="bike-benchmark">Cycling — FTP (watts) or avg speed (km/h)</label>
-            <input type="text" id="bike-benchmark" placeholder="180W or 28km/h">
+            <label for="weekly-hours">Current weekly training hours</label>
+            <select id="weekly-hours">
+              <option value="" disabled selected>Select…</option>
+              <option value="lt3">&lt; 3 hours</option>
+              <option value="3-6">3–6 hours</option>
+              <option value="6-10">6–10 hours</option>
+              <option value="10-15">10–15 hours</option>
+              <option value="15+">15+ hours</option>
+            </select>
           </div>
           <div class="field">
-            <label for="swim-benchmark">Swimming — 100m time (mm:ss)</label>
-            <input type="text" id="swim-benchmark" placeholder="2:00">
+            <label for="strongest-discipline">Strongest discipline</label>
+            <select id="strongest-discipline">
+              <option value="" disabled selected>Select…</option>
+              <option value="swim">Swimming</option>
+              <option value="bike">Cycling</option>
+              <option value="run">Running</option>
+              <option value="balanced">Balanced</option>
+            </select>
+          </div>
+
+          <div class="fitness-badges" id="fitness-badges">
+            <div class="fitness-badge badge-run" id="badge-run">
+              <span class="badge-label">Run</span>
+              <span class="badge-level">---</span>
+              <span class="badge-source"></span>
+            </div>
+            <div class="fitness-badge badge-bike" id="badge-bike">
+              <span class="badge-label">Bike</span>
+              <span class="badge-level">---</span>
+              <span class="badge-source"></span>
+            </div>
+            <div class="fitness-badge badge-swim" id="badge-swim">
+              <span class="badge-label">Swim</span>
+              <span class="badge-level">---</span>
+              <span class="badge-source"></span>
+            </div>
+          </div>
+
+          <button type="button" class="benchmark-toggle" id="benchmark-toggle">
+            <span class="toggle-arrow">&#9654;</span> I know my numbers
+          </button>
+
+          <div class="benchmark-section" id="benchmark-section">
+            <div class="field">
+              <label>Running benchmark</label>
+              <div class="benchmark-row">
+                <select id="run-bench-dist">
+                  <option value="5k">5K</option>
+                  <option value="10k">10K</option>
+                  <option value="hm">Half Marathon</option>
+                  <option value="marathon">Marathon</option>
+                </select>
+                <input type="text" id="run-bench-time" placeholder="mm:ss">
+              </div>
+            </div>
+            <div class="field">
+              <label>Cycling benchmark</label>
+              <div class="benchmark-row">
+                <select id="bike-bench-type">
+                  <option value="ftp">FTP (watts)</option>
+                  <option value="speed">Avg speed (km/h)</option>
+                </select>
+                <input type="text" id="bike-bench-value" placeholder="180">
+              </div>
+            </div>
+            <div class="field">
+              <label>Swimming benchmark</label>
+              <div class="benchmark-row">
+                <select id="swim-bench-dist">
+                  <option value="100m">100m</option>
+                  <option value="400m">400m</option>
+                  <option value="1500m">1500m</option>
+                </select>
+                <input type="text" id="swim-bench-time" placeholder="mm:ss">
+              </div>
+            </div>
           </div>
         </div>
 

@@ -18,50 +18,134 @@ const RACE_DISTANCES = {
   full:    { swim: 3.8,   bike: 180, run: 42.2 },
 };
 
-// === Fitness Level Parsing ===
+// === Fitness Level System ===
 
 function parseTime(str) {
-  // Parses "mm:ss" to total seconds
   if (!str) return null;
   const parts = str.trim().split(':');
   if (parts.length === 2) {
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    const m = parseInt(parts[0]), s = parseInt(parts[1]);
+    if (isNaN(m) || isNaN(s) || s >= 60 || m < 0 || s < 0) return null;
+    return m * 60 + s;
+  }
+  if (parts.length === 3) {
+    const h = parseInt(parts[0]), m = parseInt(parts[1]), s = parseInt(parts[2]);
+    if (isNaN(h) || isNaN(m) || isNaN(s) || m >= 60 || s >= 60) return null;
+    return h * 3600 + m * 60 + s;
   }
   return null;
 }
 
-function getRunLevel(benchmarkStr) {
-  // Based on 5K time
-  const secs = parseTime(benchmarkStr);
-  if (!secs) return 'intermediate';
-  if (secs < 20 * 60) return 'advanced';
-  if (secs < 25 * 60) return 'intermediate';
+function clampLevel(numeric) {
+  if (numeric <= 0) return 'beginner';
+  if (numeric >= 2) return 'advanced';
+  return 'intermediate';
+}
+
+const LEVEL_NUM = { beginner: 0, intermediate: 1, advanced: 2 };
+
+function bumpLevel(level) {
+  if (level === 'beginner') return 'intermediate';
+  if (level === 'intermediate') return 'advanced';
+  return 'advanced';
+}
+
+// Experience x hours → base numeric level (0 = beginner, 1 = intermediate, 2 = advanced)
+const PROFILE_MATRIX = {
+  'new':  { 'lt3': 0, '3-6': 0, '6-10': 0, '10-15': 1, '15+': 1 },
+  'lt1':  { 'lt3': 0, '3-6': 0, '6-10': 1, '10-15': 1, '15+': 1 },
+  '1-3':  { 'lt3': 0, '3-6': 1, '6-10': 1, '10-15': 1, '15+': 2 },
+  '3+':   { 'lt3': 0, '3-6': 1, '6-10': 1, '10-15': 2, '15+': 2 },
+};
+
+function estimateLevelFromProfile(experience, weeklyHours, strongestDiscipline) {
+  const row = PROFILE_MATRIX[experience];
+  if (!row) return { run: 'beginner', bike: 'beginner', swim: 'beginner' };
+  const baseNum = row[weeklyHours] ?? 0;
+  const base = clampLevel(baseNum);
+
+  const result = { run: base, bike: base, swim: base };
+
+  if (strongestDiscipline && strongestDiscipline !== 'balanced' && result[strongestDiscipline]) {
+    result[strongestDiscipline] = bumpLevel(result[strongestDiscipline]);
+  }
+
+  return result;
+}
+
+// Simplified VDOT-style conversion: equivalent 5K seconds from other distances
+const RUN_DISTANCE_FACTOR = {
+  '5k': 1,
+  '10k': 0.4816,
+  'hm': 0.2173,
+  'marathon': 0.1026,
+};
+
+function normalizeRunBenchmark(distance, timeStr) {
+  const totalSecs = parseTime(timeStr);
+  if (!totalSecs || totalSecs <= 0) return null;
+  const factor = RUN_DISTANCE_FACTOR[distance];
+  if (!factor) return null;
+  const equiv5kSecs = totalSecs * factor;
+  if (equiv5kSecs < 20 * 60) return 'advanced';
+  if (equiv5kSecs < 25 * 60) return 'intermediate';
   return 'beginner';
 }
 
-function getSwimLevel(benchmarkStr) {
-  // Based on 100m time
-  const secs = parseTime(benchmarkStr);
-  if (!secs) return 'intermediate';
-  if (secs < 90) return 'advanced';
-  if (secs < 120) return 'intermediate';
+// Convert swim times to 100m pace, then classify
+const SWIM_DISTANCE_DIVISOR = { '100m': 1, '400m': 4.15, '1500m': 16 };
+
+function normalizeSwimBenchmark(distance, timeStr) {
+  const totalSecs = parseTime(timeStr);
+  if (!totalSecs || totalSecs <= 0) return null;
+  const divisor = SWIM_DISTANCE_DIVISOR[distance];
+  if (!divisor) return null;
+  const pace100m = totalSecs / divisor;
+  if (pace100m < 90) return 'advanced';
+  if (pace100m < 120) return 'intermediate';
   return 'beginner';
 }
 
-function getBikeLevel(benchmarkStr) {
-  const str = benchmarkStr?.trim().toLowerCase() || '';
-  const num = parseFloat(str);
-  if (!num) return 'intermediate';
-  if (str.includes('w')) {
-    // FTP watts
+function normalizeBikeBenchmark(type, valueStr) {
+  const num = parseFloat(valueStr);
+  if (!num || num <= 0) return null;
+  if (type === 'ftp') {
     if (num > 250) return 'advanced';
     if (num > 180) return 'intermediate';
     return 'beginner';
   }
-  // avg speed km/h
   if (num > 32) return 'advanced';
   if (num > 26) return 'intermediate';
   return 'beginner';
+}
+
+function getFitnessLevels(profileData, benchmarkData) {
+  const estimated = estimateLevelFromProfile(
+    profileData.experience, profileData.weeklyHours, profileData.strongest
+  );
+
+  const runBench = benchmarkData.runTime
+    ? normalizeRunBenchmark(benchmarkData.runDist, benchmarkData.runTime)
+    : null;
+  const bikeBench = benchmarkData.bikeValue
+    ? normalizeBikeBenchmark(benchmarkData.bikeType, benchmarkData.bikeValue)
+    : null;
+  const swimBench = benchmarkData.swimTime
+    ? normalizeSwimBenchmark(benchmarkData.swimDist, benchmarkData.swimTime)
+    : null;
+
+  return {
+    run:  { level: runBench  || estimated.run,  source: runBench  ? 'measured' : 'estimated' },
+    bike: { level: bikeBench || estimated.bike, source: bikeBench ? 'measured' : 'estimated' },
+    swim: { level: swimBench || estimated.swim, source: swimBench ? 'measured' : 'estimated' },
+  };
+}
+
+function isProfileComplete() {
+  const exp = document.getElementById('tri-experience').value;
+  const hrs = document.getElementById('weekly-hours').value;
+  const str = document.getElementById('strongest-discipline').value;
+  return exp !== '' && hrs !== '' && str !== '';
 }
 
 // === Duration Calculations ===
@@ -763,9 +847,15 @@ function getConfig() {
     raceType: document.getElementById('race-type').value,
     raceDate: document.getElementById('race-date').value,
     planStart: document.getElementById('plan-start').value,
-    runBenchmark: document.getElementById('run-benchmark').value,
-    bikeBenchmark: document.getElementById('bike-benchmark').value,
-    swimBenchmark: document.getElementById('swim-benchmark').value,
+    experience: document.getElementById('tri-experience').value,
+    weeklyHours: document.getElementById('weekly-hours').value,
+    strongestDiscipline: document.getElementById('strongest-discipline').value,
+    runBenchmarkDist: document.getElementById('run-bench-dist').value,
+    runBenchmarkTime: document.getElementById('run-bench-time').value,
+    bikeBenchmarkType: document.getElementById('bike-bench-type').value,
+    bikeBenchmarkValue: document.getElementById('bike-bench-value').value,
+    swimBenchmarkDist: document.getElementById('swim-bench-dist').value,
+    swimBenchmarkTime: document.getElementById('swim-bench-time').value,
     runSessions: parseInt(document.getElementById('run-sessions').value) || 0,
     bikeSessions: parseInt(document.getElementById('bike-sessions').value) || 0,
     swimSessions: parseInt(document.getElementById('swim-sessions').value) || 0,
@@ -777,7 +867,21 @@ function getConfig() {
   };
 }
 
+function configToFitnessLevels(config) {
+  return getFitnessLevels(
+    { experience: config.experience, weeklyHours: config.weeklyHours, strongest: config.strongestDiscipline },
+    {
+      runDist: config.runBenchmarkDist, runTime: config.runBenchmarkTime,
+      bikeType: config.bikeBenchmarkType, bikeValue: config.bikeBenchmarkValue,
+      swimDist: config.swimBenchmarkDist, swimTime: config.swimBenchmarkTime,
+    }
+  );
+}
+
 function validateConfig(config) {
+  if (!config.experience || !config.weeklyHours || !config.strongestDiscipline) {
+    return 'Please complete your fitness profile.';
+  }
   if (!config.raceDate) return 'Please set a race date.';
   if (!config.planStart) return 'Please set a plan start date.';
   if (new Date(config.planStart) >= new Date(config.raceDate)) {
@@ -802,12 +906,12 @@ let templateReturnTo = 'settings';
 let settingsReturnTo = null;
 
 function generateTemplate(config) {
-  // Generate a single "week 1" to use as the editable template
+  const fitness = configToFitnessLevels(config);
   const planConfig = {
     ...config,
-    runLevel: getRunLevel(config.runBenchmark),
-    bikeLevel: getBikeLevel(config.bikeBenchmark),
-    swimLevel: getSwimLevel(config.swimBenchmark),
+    runLevel: fitness.run.level,
+    bikeLevel: fitness.bike.level,
+    swimLevel: fitness.swim.level,
   };
 
   // Generate full plan to get the first normal week's layout
@@ -1034,11 +1138,12 @@ function handleTemplateDrop(e) {
 
 // Apply template to generate full plan
 function applyTemplateToFullPlan(template, config) {
+  const fitness = configToFitnessLevels(config);
   const planConfig = {
     ...config,
-    runLevel: getRunLevel(config.runBenchmark),
-    bikeLevel: getBikeLevel(config.bikeBenchmark),
-    swimLevel: getSwimLevel(config.swimBenchmark),
+    runLevel: fitness.run.level,
+    bikeLevel: fitness.bike.level,
+    swimLevel: fitness.swim.level,
   };
 
   // Generate the base plan (for durations/volumes)
@@ -1215,16 +1320,63 @@ document.getElementById('delete-btn').addEventListener('click', () => {
   document.getElementById('plan-start').value = today.toISOString().split('T')[0];
   document.getElementById('race-date').value = raceDate.toISOString().split('T')[0];
 
+  document.getElementById('tri-experience').selectedIndex = 0;
+  document.getElementById('weekly-hours').selectedIndex = 0;
+  document.getElementById('strongest-discipline').selectedIndex = 0;
+  document.getElementById('run-bench-time').value = '';
+  document.getElementById('bike-bench-value').value = '';
+  document.getElementById('swim-bench-time').value = '';
+  document.getElementById('benchmark-section').classList.remove('expanded');
+  document.getElementById('benchmark-toggle').classList.remove('expanded');
+
+  updateFitnessBadges();
   showSection('settings');
 });
+
+function migrateOldConfig(config) {
+  if (config.runBenchmark && !config.experience) {
+    config.runBenchmarkDist = '5k';
+    config.runBenchmarkTime = config.runBenchmark;
+    config.experience = '1-3';
+    config.weeklyHours = '6-10';
+    config.strongestDiscipline = 'balanced';
+    delete config.runBenchmark;
+  }
+  if (config.bikeBenchmark && !config.bikeBenchmarkType) {
+    const raw = config.bikeBenchmark.trim().toLowerCase();
+    if (raw.includes('w')) {
+      config.bikeBenchmarkType = 'ftp';
+      config.bikeBenchmarkValue = parseFloat(raw).toString();
+    } else {
+      config.bikeBenchmarkType = 'speed';
+      config.bikeBenchmarkValue = raw;
+    }
+    delete config.bikeBenchmark;
+  }
+  if (config.swimBenchmark && !config.swimBenchmarkDist) {
+    config.swimBenchmarkDist = '100m';
+    config.swimBenchmarkTime = config.swimBenchmark;
+    delete config.swimBenchmark;
+  }
+  return config;
+}
 
 function restoreConfig(config) {
   if (config.raceType) document.getElementById('race-type').value = config.raceType;
   if (config.raceDate) document.getElementById('race-date').value = config.raceDate;
   if (config.planStart) document.getElementById('plan-start').value = config.planStart;
-  if (config.runBenchmark) document.getElementById('run-benchmark').value = config.runBenchmark;
-  if (config.bikeBenchmark) document.getElementById('bike-benchmark').value = config.bikeBenchmark;
-  if (config.swimBenchmark) document.getElementById('swim-benchmark').value = config.swimBenchmark;
+
+  if (config.experience) document.getElementById('tri-experience').value = config.experience;
+  if (config.weeklyHours) document.getElementById('weekly-hours').value = config.weeklyHours;
+  if (config.strongestDiscipline) document.getElementById('strongest-discipline').value = config.strongestDiscipline;
+
+  if (config.runBenchmarkDist) document.getElementById('run-bench-dist').value = config.runBenchmarkDist;
+  if (config.runBenchmarkTime) document.getElementById('run-bench-time').value = config.runBenchmarkTime;
+  if (config.bikeBenchmarkType) document.getElementById('bike-bench-type').value = config.bikeBenchmarkType;
+  if (config.bikeBenchmarkValue) document.getElementById('bike-bench-value').value = config.bikeBenchmarkValue;
+  if (config.swimBenchmarkDist) document.getElementById('swim-bench-dist').value = config.swimBenchmarkDist;
+  if (config.swimBenchmarkTime) document.getElementById('swim-bench-time').value = config.swimBenchmarkTime;
+
   if (config.runSessions != null) document.getElementById('run-sessions').value = config.runSessions;
   if (config.bikeSessions != null) document.getElementById('bike-sessions').value = config.bikeSessions;
   if (config.swimSessions != null) document.getElementById('swim-sessions').value = config.swimSessions;
@@ -1233,6 +1385,94 @@ function restoreConfig(config) {
   if (config.polarized != null) document.getElementById('polarized').checked = config.polarized;
   if (config.recoveryWeeks != null) document.getElementById('recovery-weeks').checked = config.recoveryWeeks;
   if (config.longDay != null) document.getElementById('long-day').value = config.longDay;
+
+  const hasBenchmarks = config.runBenchmarkTime || config.bikeBenchmarkValue || config.swimBenchmarkTime;
+  if (hasBenchmarks) {
+    document.getElementById('benchmark-section').classList.add('expanded');
+    document.getElementById('benchmark-toggle').classList.add('expanded');
+  }
+}
+
+// === Fitness UI: Badges, Toggle, Generate Button ===
+
+function updateFitnessBadges() {
+  const complete = isProfileComplete();
+  const badges = { run: 'badge-run', bike: 'badge-bike', swim: 'badge-swim' };
+
+  if (!complete) {
+    Object.keys(badges).forEach(sport => {
+      const el = document.getElementById(badges[sport]);
+      el.classList.remove('badge-active', 'badge-measured');
+      el.querySelector('.badge-level').textContent = '---';
+      el.querySelector('.badge-source').textContent = '';
+    });
+    updateGenerateButton();
+    return;
+  }
+
+  const config = getConfig();
+  const fitness = configToFitnessLevels(config);
+
+  Object.keys(badges).forEach(sport => {
+    const el = document.getElementById(badges[sport]);
+    const data = fitness[sport];
+    el.classList.add('badge-active');
+    el.classList.toggle('badge-measured', data.source === 'measured');
+    el.querySelector('.badge-level').textContent =
+      data.level.charAt(0).toUpperCase() + data.level.slice(1);
+    el.querySelector('.badge-source').textContent = data.source;
+  });
+
+  updateGenerateButton();
+}
+
+function updateGenerateButton() {
+  const btn = document.getElementById('generate-btn');
+  const complete = isProfileComplete();
+  btn.disabled = !complete;
+
+  let hint = document.getElementById('generate-hint');
+  if (!complete) {
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.id = 'generate-hint';
+      hint.className = 'generate-hint';
+      btn.parentNode.appendChild(hint);
+    }
+    hint.textContent = 'Complete your fitness profile to continue';
+  } else if (hint) {
+    hint.remove();
+  }
+}
+
+function setupBenchmarkToggle() {
+  const toggle = document.getElementById('benchmark-toggle');
+  const section = document.getElementById('benchmark-section');
+
+  toggle.addEventListener('click', () => {
+    const expanding = !section.classList.contains('expanded');
+    section.classList.toggle('expanded');
+    toggle.classList.toggle('expanded');
+    toggle.querySelector('.toggle-arrow').textContent = expanding ? '\u25BC' : '\u25B6';
+  });
+}
+
+function setupFitnessListeners() {
+  const profileIds = ['tri-experience', 'weekly-hours', 'strongest-discipline'];
+  const benchIds = [
+    'run-bench-dist', 'run-bench-time',
+    'bike-bench-type', 'bike-bench-value',
+    'swim-bench-dist', 'swim-bench-time',
+  ];
+
+  profileIds.forEach(id => {
+    document.getElementById(id).addEventListener('change', updateFitnessBadges);
+  });
+  benchIds.forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', updateFitnessBadges);
+    el.addEventListener('change', updateFitnessBadges);
+  });
 }
 
 // === Init ===
@@ -1244,18 +1484,23 @@ function restoreConfig(config) {
   document.getElementById('plan-start').value = today.toISOString().split('T')[0];
   document.getElementById('race-date').value = raceDate.toISOString().split('T')[0];
 
+  setupBenchmarkToggle();
+  setupFitnessListeners();
+
   // Auto-restore saved plan if it exists
   const savedPlan = localStorage.getItem('simpletri-plan');
   if (savedPlan) {
     try {
       const parsed = JSON.parse(savedPlan);
       if (parsed.config && parsed.template) {
-        restoreConfig(parsed.config);
-        currentPlanConfig = parsed.config;
+        const migratedConfig = migrateOldConfig(parsed.config);
+        restoreConfig(migratedConfig);
+        currentPlanConfig = migratedConfig;
         currentTemplate = parsed.template;
         completedWorkouts = new Set(parsed.completions || []);
         const groups = applyTemplateToFullPlan(parsed.template, parsed.config);
         renderPlan(groups);
+        updateFitnessBadges();
         showSection('plan-display');
         document.querySelectorAll('.week-row[data-group-idx]').forEach(row => {
           const idx = parseInt(row.dataset.groupIdx);
@@ -1272,9 +1517,11 @@ function restoreConfig(config) {
   const savedConfig = localStorage.getItem('simpletri-config');
   if (savedConfig) {
     try {
-      restoreConfig(JSON.parse(savedConfig));
+      restoreConfig(migrateOldConfig(JSON.parse(savedConfig)));
     } catch (e) {
       // ignore
     }
   }
+
+  updateFitnessBadges();
 })();

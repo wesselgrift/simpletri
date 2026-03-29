@@ -135,6 +135,157 @@ header h1 {
   accent-color: var(--accent);
 }
 
+/* === Fitness Card === */
+.fitness-card {
+  grid-row: span 1;
+}
+
+.fitness-badges {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.fitness-badge {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  transition: background 0.2s, border-color 0.2s;
+}
+.fitness-badge .badge-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.fitness-badge .badge-level {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.fitness-badge .badge-source {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  min-height: 0.7rem;
+}
+
+.badge-run.badge-active {
+  background: var(--run-bg);
+  border-color: var(--run-border);
+}
+.badge-run.badge-active .badge-label { color: var(--run-text); }
+.badge-run.badge-active .badge-level { color: var(--run-text); }
+
+.badge-bike.badge-active {
+  background: var(--bike-bg);
+  border-color: var(--bike-border);
+}
+.badge-bike.badge-active .badge-label { color: var(--bike-text); }
+.badge-bike.badge-active .badge-level { color: var(--bike-text); }
+
+.badge-swim.badge-active {
+  background: var(--swim-bg);
+  border-color: var(--swim-border);
+}
+.badge-swim.badge-active .badge-label { color: var(--swim-text); }
+.badge-swim.badge-active .badge-level { color: var(--swim-text); }
+
+.badge-measured {
+  border-width: 2px;
+}
+
+.benchmark-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.35rem 0;
+  margin-top: 0.25rem;
+  transition: opacity 0.15s;
+}
+.benchmark-toggle:hover {
+  opacity: 0.75;
+}
+.benchmark-toggle .toggle-arrow {
+  font-size: 0.6rem;
+  transition: transform 0.25s ease;
+  display: inline-block;
+}
+.benchmark-toggle.expanded .toggle-arrow {
+  transform: rotate(90deg);
+}
+
+.benchmark-section {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+.benchmark-section.expanded {
+  max-height: 300px;
+}
+.benchmark-section .field:first-child {
+  margin-top: 0.5rem;
+}
+
+.benchmark-row {
+  display: flex;
+  gap: 0.4rem;
+}
+.benchmark-row select {
+  width: 45%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.benchmark-row input {
+  flex: 1;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.benchmark-row select:focus,
+.benchmark-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.benchmark-row input.input-error {
+  border-color: #c0392b;
+}
+
+.generate-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.generate-btn:disabled:hover {
+  opacity: 0.45;
+}
+.generate-hint {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+}
+
 /* === Buttons === */
 .settings-actions {
   display: flex;
