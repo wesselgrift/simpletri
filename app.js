@@ -268,6 +268,43 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase) {
   return '';
 }
 
+// === Vacation Helpers ===
+
+function getVacationWeekIndices(vacations, planStart, raceDate) {
+  if (!vacations || vacations.length === 0) return new Set();
+
+  const start = new Date(planStart);
+  const end = new Date(raceDate);
+
+  const dayOfWeek = start.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  start.setDate(start.getDate() + mondayOffset);
+
+  const totalDays = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+  const totalWeeks = Math.max(1, Math.floor(totalDays / 7));
+
+  const indices = new Set();
+  for (const vacation of vacations) {
+    if (!vacation.start || !vacation.end) continue;
+    const vStart = new Date(vacation.start);
+    const vEnd = new Date(vacation.end);
+    vEnd.setHours(23, 59, 59);
+
+    for (let w = 0; w < totalWeeks; w++) {
+      const weekStart = new Date(start);
+      weekStart.setDate(weekStart.getDate() + w * 7);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59);
+
+      if (vStart <= weekEnd && vEnd >= weekStart) {
+        indices.add(w);
+      }
+    }
+  }
+  return indices;
+}
+
 // === Plan Generation ===
 
 function generatePlan(config) {
@@ -275,7 +312,8 @@ function generatePlan(config) {
     raceType, raceDate, planStart,
     runLevel, bikeLevel, swimLevel,
     runSessions, bikeSessions, swimSessions, strengthSessions,
-    restDays, polarized, recoveryWeeks, longDay
+    restDays, polarized, recoveryWeeks, longDay,
+    vacationWeekIndices = new Set()
   } = config;
 
   const start = new Date(planStart);
@@ -288,6 +326,9 @@ function generatePlan(config) {
 
   const totalDays = Math.floor((end - start) / (1000 * 60 * 60 * 24));
   const totalWeeks = Math.max(1, Math.floor(totalDays / 7));
+
+  const vacationCount = [...vacationWeekIndices].filter(i => i < totalWeeks).length;
+  const totalTrainingWeeks = totalWeeks - vacationCount;
 
   const raceDistances = RACE_DISTANCES[raceType] || RACE_DISTANCES.olympic;
 
@@ -303,39 +344,54 @@ function generatePlan(config) {
   const swimRange = getMinutesRange('swim', swimLevel);
 
   const weeks = [];
+  let trainingWeekIdx = 0;
 
   for (let w = 0; w < totalWeeks; w++) {
     const weekStart = new Date(start);
     weekStart.setDate(weekStart.getDate() + w * 7);
 
-    const taperLength = TAPER_WEEKS[raceType] || 2;
-    const isLastWeek = w === totalWeeks - 1;
-    const isTaperWeek = w >= totalWeeks - taperLength && totalWeeks > taperLength + 2;
-    const isRecoveryWeek = recoveryWeeks && ((w + 1) % 4 === 0) && !isTaperWeek && !isLastWeek;
+    if (vacationWeekIndices.has(w)) {
+      weeks.push({
+        weekNumber: w + 1,
+        weekStart,
+        isVacation: true,
+        isRecovery: false,
+        isTaper: false,
+        phase: 'vacation',
+        days: Array.from({ length: 7 }, () => [{ discipline: 'rest', duration: 0, intensity: 'rest' }]),
+        totalSessions: 0,
+      });
+      continue;
+    }
 
-    // Progress factor: 0 at start, 1 at peak (before taper begins)
-    const peakWeek = Math.max(0, totalWeeks - taperLength - 1);
-    const progress = peakWeek > 0 ? Math.min(1, w / peakWeek) : 0;
+    const taperLength = TAPER_WEEKS[raceType] || 2;
+    const isLastTrainingWeek = trainingWeekIdx === totalTrainingWeeks - 1;
+    const isTaperWeek = trainingWeekIdx >= totalTrainingWeeks - taperLength && totalTrainingWeeks > taperLength + 2;
+    const isRecoveryWeek = recoveryWeeks && ((trainingWeekIdx + 1) % 4 === 0) && !isTaperWeek && !isLastTrainingWeek;
+
+    // Progress factor based on training weeks only
+    const peakWeek = Math.max(0, totalTrainingWeeks - taperLength - 1);
+    const progress = peakWeek > 0 ? Math.min(1, trainingWeekIdx / peakWeek) : 0;
 
     // Volume multiplier
     let volumeMultiplier = 1;
-    if (isTaperWeek || isLastWeek) {
-      const weeksUntilRace = totalWeeks - 1 - w;
-      volumeMultiplier = 0.55 + (weeksUntilRace / Math.max(1, taperLength)) * 0.25;
+    if (isTaperWeek || isLastTrainingWeek) {
+      const trainingWeeksUntilRace = totalTrainingWeeks - 1 - trainingWeekIdx;
+      volumeMultiplier = 0.55 + (trainingWeeksUntilRace / Math.max(1, taperLength)) * 0.25;
     } else if (isRecoveryWeek) {
       volumeMultiplier = 0.75;
     }
 
-    // Determine training phase
-    const trainingWeeks = totalWeeks - taperLength;
+    // Determine training phase based on training weeks
+    const preTaperWeeks = totalTrainingWeeks - taperLength;
     let phase = 'base';
-    if (isTaperWeek || isLastWeek) {
+    if (isTaperWeek || isLastTrainingWeek) {
       phase = 'taper';
     } else {
-      const baseEnd = Math.floor(trainingWeeks * PHASE_SPLITS.base);
-      const buildEnd = baseEnd + Math.floor(trainingWeeks * PHASE_SPLITS.build);
-      if (w >= buildEnd) phase = 'peak';
-      else if (w >= baseEnd) phase = 'build';
+      const baseEnd = Math.floor(preTaperWeeks * PHASE_SPLITS.base);
+      const buildEnd = baseEnd + Math.floor(preTaperWeeks * PHASE_SPLITS.build);
+      if (trainingWeekIdx >= buildEnd) phase = 'peak';
+      else if (trainingWeekIdx >= baseEnd) phase = 'build';
     }
 
     // Calculate session durations for this week
@@ -514,16 +570,18 @@ function generatePlan(config) {
     // Calculate total sessions (non-rest)
     const totalSessions = daySlots.flat().filter(w => w.discipline !== 'rest').length;
 
-    // Group weeks for display
     weeks.push({
       weekNumber: w + 1,
       weekStart,
+      isVacation: false,
       isRecovery: isRecoveryWeek,
-      isTaper: isTaperWeek || isLastWeek,
+      isTaper: isTaperWeek || isLastTrainingWeek,
       phase,
       days: daySlots,
       totalSessions,
     });
+
+    trainingWeekIdx++;
   }
 
   return groupWeeks(weeks);
@@ -642,8 +700,10 @@ function renderPlan(groups) {
 
   // Render each group
   groups.forEach((group, groupIdx) => {
+    const isVacation = group.template.isVacation;
+
     const row = document.createElement('div');
-    row.className = 'week-row';
+    row.className = 'week-row' + (isVacation ? ' vacation-week' : '');
     row.dataset.groupIdx = groupIdx;
 
     // Week label
@@ -662,41 +722,48 @@ function renderPlan(groups) {
     dateEl.textContent = formatWeekDateRange(group.template.weekStart);
     label.appendChild(dateEl);
 
-    const progressWrap = document.createElement('div');
-    progressWrap.className = 'week-progress-wrap';
-
-    const meta = document.createElement('span');
-    meta.className = 'week-meta week-progress';
-    meta.textContent = `0/${group.template.totalSessions}`;
-    progressWrap.appendChild(meta);
-
-    const bar = document.createElement('div');
-    bar.className = 'progress-bar';
-    const fill = document.createElement('div');
-    fill.className = 'progress-fill';
-    fill.style.width = '0%';
-    bar.appendChild(fill);
-    progressWrap.appendChild(bar);
-
-    label.appendChild(progressWrap);
-
-    if (group.template.isRecovery) {
+    if (isVacation) {
       const badge = document.createElement('div');
-      badge.className = 'recovery-badge';
-      badge.textContent = 'RECOVERY';
+      badge.className = 'vacation-badge';
+      badge.textContent = 'VACATION';
       label.appendChild(badge);
-    }
-    if (group.template.isTaper && !group.template.isRecovery) {
-      const badge = document.createElement('div');
-      badge.className = 'recovery-badge';
-      badge.textContent = 'TAPER';
-      label.appendChild(badge);
-    }
-    if (!group.template.isRecovery && !group.template.isTaper && group.template.phase) {
-      const phaseBadge = document.createElement('div');
-      phaseBadge.className = 'phase-badge';
-      phaseBadge.textContent = group.template.phase.toUpperCase();
-      label.appendChild(phaseBadge);
+    } else {
+      const progressWrap = document.createElement('div');
+      progressWrap.className = 'week-progress-wrap';
+
+      const meta = document.createElement('span');
+      meta.className = 'week-meta week-progress';
+      meta.textContent = `0/${group.template.totalSessions}`;
+      progressWrap.appendChild(meta);
+
+      const bar = document.createElement('div');
+      bar.className = 'progress-bar';
+      const fill = document.createElement('div');
+      fill.className = 'progress-fill';
+      fill.style.width = '0%';
+      bar.appendChild(fill);
+      progressWrap.appendChild(bar);
+
+      label.appendChild(progressWrap);
+
+      if (group.template.isRecovery) {
+        const badge = document.createElement('div');
+        badge.className = 'recovery-badge';
+        badge.textContent = 'RECOVERY';
+        label.appendChild(badge);
+      }
+      if (group.template.isTaper && !group.template.isRecovery) {
+        const badge = document.createElement('div');
+        badge.className = 'recovery-badge';
+        badge.textContent = 'TAPER';
+        label.appendChild(badge);
+      }
+      if (!group.template.isRecovery && !group.template.isTaper && group.template.phase) {
+        const phaseBadge = document.createElement('div');
+        phaseBadge.className = 'phase-badge';
+        phaseBadge.textContent = group.template.phase.toUpperCase();
+        label.appendChild(phaseBadge);
+      }
     }
 
     row.appendChild(label);
@@ -708,11 +775,13 @@ function renderPlan(groups) {
       cell.dataset.groupIdx = groupIdx;
       cell.dataset.dayIdx = d;
 
-      const dayWorkouts = group.template.days[d];
-      dayWorkouts.forEach((workout, workoutIdx) => {
-        const block = createWorkoutBlock(workout, groupIdx, d, workoutIdx, false);
-        cell.appendChild(block);
-      });
+      if (!isVacation) {
+        const dayWorkouts = group.template.days[d];
+        dayWorkouts.forEach((workout, workoutIdx) => {
+          const block = createWorkoutBlock(workout, groupIdx, d, workoutIdx, false);
+          cell.appendChild(block);
+        });
+      }
 
       row.appendChild(cell);
     }
@@ -1177,6 +1246,7 @@ function validateConfig(config) {
 // This is separate from the full plan which has varying durations per week
 let currentTemplate = null; // { days: [[{discipline, intensity}], ...] }
 let currentPlanConfig = null;
+let currentVacations = []; // [{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }, ...]
 let completedWorkouts = new Set();
 let skippedWorkouts = new Set();
 let weekOverrides = {};
@@ -1301,6 +1371,94 @@ function renderTemplate(template) {
 
   grid.appendChild(row);
   checkAdjacentConflicts();
+  renderVacations();
+}
+
+// === Vacation Editor ===
+
+function renderVacations() {
+  const list = document.getElementById('vacation-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  const config = currentPlanConfig || getConfig();
+  const minDate = config.planStart;
+  const maxDate = config.raceDate;
+
+  currentVacations.forEach((vacation, idx) => {
+    const row = document.createElement('div');
+    row.className = 'vacation-row';
+
+    const startInput = document.createElement('input');
+    startInput.type = 'date';
+    startInput.className = 'vacation-date';
+    startInput.value = vacation.start || '';
+    if (minDate) startInput.min = minDate;
+    if (maxDate) startInput.max = maxDate;
+    startInput.addEventListener('change', () => {
+      currentVacations[idx].start = startInput.value;
+      updateVacationDuration(row, currentVacations[idx]);
+    });
+
+    const toLabel = document.createElement('span');
+    toLabel.className = 'vacation-to';
+    toLabel.textContent = 'to';
+
+    const endInput = document.createElement('input');
+    endInput.type = 'date';
+    endInput.className = 'vacation-date';
+    endInput.value = vacation.end || '';
+    if (minDate) endInput.min = minDate;
+    if (maxDate) endInput.max = maxDate;
+    endInput.addEventListener('change', () => {
+      currentVacations[idx].end = endInput.value;
+      updateVacationDuration(row, currentVacations[idx]);
+    });
+
+    const duration = document.createElement('span');
+    duration.className = 'vacation-duration';
+    row.appendChild(startInput);
+    row.appendChild(toLabel);
+    row.appendChild(endInput);
+    row.appendChild(duration);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'vacation-remove';
+    removeBtn.textContent = '\u00D7';
+    removeBtn.title = 'Remove vacation';
+    removeBtn.addEventListener('click', () => {
+      currentVacations.splice(idx, 1);
+      renderVacations();
+    });
+    row.appendChild(removeBtn);
+
+    list.appendChild(row);
+    updateVacationDuration(row, vacation);
+  });
+}
+
+function updateVacationDuration(row, vacation) {
+  const el = row.querySelector('.vacation-duration');
+  if (!el) return;
+  if (!vacation.start || !vacation.end) {
+    el.textContent = '';
+    return;
+  }
+  const start = new Date(vacation.start);
+  const end = new Date(vacation.end);
+  if (end < start) {
+    el.textContent = 'invalid';
+    el.classList.add('vacation-duration-warn');
+    return;
+  }
+  el.classList.remove('vacation-duration-warn');
+  const days = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+  if (days <= 6) {
+    el.textContent = `${days} day${days > 1 ? 's' : ''}`;
+  } else {
+    const weeks = Math.ceil(days / 7);
+    el.textContent = `~${weeks} week${weeks > 1 ? 's' : ''}`;
+  }
 }
 
 function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
@@ -1441,21 +1599,26 @@ function performTemplateDrop(cell) {
 }
 
 // Apply template to generate full plan
-function applyTemplateToFullPlan(template, config) {
+function applyTemplateToFullPlan(template, config, vacations) {
   const fitness = configToFitnessLevels(config);
+  const vacationWeekIndices = getVacationWeekIndices(vacations || [], config.planStart, config.raceDate);
+
   const planConfig = {
     ...config,
     runLevel: fitness.run.level,
     bikeLevel: fitness.bike.level,
     swimLevel: fitness.swim.level,
+    vacationWeekIndices,
   };
 
-  // Generate the base plan (for durations/volumes)
+  // Generate the base plan (for durations/volumes, with vacation weeks as rest)
   const groups = generatePlan(planConfig);
 
-  // Now override each week's day layout with the template
+  // Override each non-vacation week's day layout with the template
   groups.forEach(group => {
     group.weeks.forEach(week => {
+      if (week.isVacation) return;
+
       // Collect all workouts from this week, grouped by discipline
       const allWorkouts = {};
       for (let d = 0; d < 7; d++) {
@@ -1510,7 +1673,6 @@ function applyTemplateToFullPlan(template, config) {
     group.template = group.weeks[0];
   });
 
-  // Re-group since layouts may now be more consistent
   return groups;
 }
 
@@ -1563,6 +1725,12 @@ document.getElementById('generate-btn').addEventListener('click', () => {
   localStorage.setItem('simpletri-config', JSON.stringify(config));
 });
 
+// Add vacation
+document.getElementById('add-vacation-btn').addEventListener('click', () => {
+  currentVacations.push({ start: '', end: '' });
+  renderVacations();
+});
+
 // Step 2 → Back (settings or plan, depending on where we came from)
 document.getElementById('template-back-btn').addEventListener('click', () => {
   showSection(templateReturnTo || 'settings');
@@ -1578,7 +1746,7 @@ document.getElementById('apply-template-btn').addEventListener('click', () => {
 
   if (isEditing && hasProgress) {
     const lockedCount = lastTracked + 1;
-    const newGroups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig);
+    const newGroups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig, currentVacations);
     const totalNew = newGroups.length;
 
     let msg = `Weeks 1–${lockedCount} have tracked progress and won't change.`;
@@ -1617,7 +1785,7 @@ document.getElementById('apply-template-btn').addEventListener('click', () => {
     completedWorkouts = new Set();
     skippedWorkouts = new Set();
     weekOverrides = {};
-    const groups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig);
+    const groups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig, currentVacations);
     renderPlan(groups);
   }
 
@@ -1654,6 +1822,7 @@ function savePlanToStorage() {
   const data = {
     config,
     template: currentTemplate,
+    vacations: currentVacations,
     completions: [...completedWorkouts],
     skipped: [...skippedWorkouts],
     weekOverrides,
@@ -1670,6 +1839,7 @@ document.getElementById('delete-btn').addEventListener('click', () => {
   localStorage.removeItem('simpletri-template');
   currentTemplate = null;
   currentPlanConfig = null;
+  currentVacations = [];
   currentGroups = [];
   completedWorkouts = new Set();
   skippedWorkouts = new Set();
@@ -1874,10 +2044,11 @@ function setupFitnessListeners() {
         restoreConfig(migratedConfig);
         currentPlanConfig = migratedConfig;
         currentTemplate = parsed.template;
+        currentVacations = parsed.vacations || [];
         completedWorkouts = new Set(parsed.completions || []);
         skippedWorkouts = new Set(parsed.skipped || []);
         weekOverrides = parsed.weekOverrides || {};
-        const groups = applyTemplateToFullPlan(parsed.template, parsed.config);
+        const groups = applyTemplateToFullPlan(parsed.template, parsed.config, currentVacations);
         Object.entries(weekOverrides).forEach(([idx, days]) => {
           const i = parseInt(idx);
           if (groups[i]) {
