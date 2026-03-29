@@ -1180,6 +1180,20 @@ let skippedWorkouts = new Set();
 let weekOverrides = {};
 let templateReturnTo = 'settings';
 let settingsReturnTo = null;
+let savedPlanGroups = null;
+
+function getLastTrackedWeekIdx() {
+  let lastIdx = -1;
+  for (const key of completedWorkouts) {
+    const idx = parseInt(key.split('-')[0]);
+    if (idx > lastIdx) lastIdx = idx;
+  }
+  for (const key of skippedWorkouts) {
+    const idx = parseInt(key.split('-')[0]);
+    if (idx > lastIdx) lastIdx = idx;
+  }
+  return lastIdx;
+}
 
 function generateTemplate(config) {
   const fitness = configToFitnessLevels(config);
@@ -1556,15 +1570,64 @@ document.getElementById('template-back-btn').addEventListener('click', () => {
 document.getElementById('apply-template-btn').addEventListener('click', () => {
   if (!currentTemplate || !currentPlanConfig) return;
 
-  const groups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig);
-  renderPlan(groups);
-  showSection('plan-display');
+  const isEditing = savedPlanGroups && savedPlanGroups.length > 0;
+  const lastTracked = getLastTrackedWeekIdx();
+  const hasProgress = lastTracked >= 0;
 
+  if (isEditing && hasProgress) {
+    const lockedCount = lastTracked + 1;
+    const newGroups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig);
+    const totalNew = newGroups.length;
+
+    let msg = `Weeks 1–${lockedCount} have tracked progress and won't change.`;
+    if (totalNew > lockedCount) {
+      msg += ` Weeks ${lockedCount + 1}–${totalNew} will be updated.`;
+    }
+    if (totalNew < lockedCount) {
+      msg += ` The new plan only has ${totalNew} weeks — progress in weeks ${totalNew + 1}–${lockedCount} will be lost.`;
+    }
+    if (!confirm(msg)) return;
+
+    // Preserve locked weeks from the saved plan groups
+    const preserveUpTo = Math.min(lastTracked, newGroups.length - 1);
+    const newOverrides = {};
+    for (let i = 0; i <= preserveUpTo; i++) {
+      if (savedPlanGroups[i]) {
+        newGroups[i] = savedPlanGroups[i];
+        // Persist each locked week's layout so it survives save/reload
+        newOverrides[i] = JSON.parse(JSON.stringify(savedPlanGroups[i].template.days));
+      }
+    }
+    weekOverrides = newOverrides;
+
+    // Clean up completion/skip keys for regenerated weeks
+    for (const key of [...completedWorkouts]) {
+      const idx = parseInt(key.split('-')[0]);
+      if (idx > preserveUpTo) completedWorkouts.delete(key);
+    }
+    for (const key of [...skippedWorkouts]) {
+      const idx = parseInt(key.split('-')[0]);
+      if (idx > preserveUpTo) skippedWorkouts.delete(key);
+    }
+
+    renderPlan(newGroups);
+  } else {
+    completedWorkouts = new Set();
+    skippedWorkouts = new Set();
+    weekOverrides = {};
+    const groups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig);
+    renderPlan(groups);
+  }
+
+  savedPlanGroups = null;
+
+  showSection('plan-display');
   savePlanToStorage();
 });
 
 // Step 3 → Step 2: Edit schedule
 document.getElementById('edit-template-btn').addEventListener('click', () => {
+  savedPlanGroups = currentGroups.slice();
   if (currentTemplate) {
     renderTemplate(currentTemplate);
   }
@@ -1574,6 +1637,7 @@ document.getElementById('edit-template-btn').addEventListener('click', () => {
 
 // Step 3 → Step 1: Edit settings
 document.getElementById('edit-btn').addEventListener('click', () => {
+  savedPlanGroups = currentGroups.slice();
   settingsReturnTo = 'plan-display';
   showSection('settings');
 });
