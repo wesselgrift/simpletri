@@ -270,6 +270,11 @@ header h1 {
   font-size: 0.85rem;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
+.week-label .week-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
 .week-label .week-meta {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -373,10 +378,35 @@ header h1 {
 }
 
 /* Progress indicator */
+.week-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
 .week-progress {
   font-size: 0.7rem;
   color: var(--text-muted);
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  white-space: nowrap;
+}
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 30px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+.progress-fill.progress-complete {
+  background: #5ba67a;
 }
 
 /* Draggable & completion */

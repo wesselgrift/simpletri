@@ -408,6 +408,26 @@ function weeksAreSimilar(a, b) {
   return true;
 }
 
+// === Date Formatting ===
+
+const MONTH_SHORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+function formatWeekDateRange(weekStart) {
+  const start = new Date(weekStart);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+
+  const sDay = start.getDate();
+  const eDay = end.getDate();
+  const sMonth = MONTH_SHORT[start.getMonth()];
+  const eMonth = MONTH_SHORT[end.getMonth()];
+
+  if (sMonth === eMonth) {
+    return `${sDay}–${eDay} ${sMonth}`;
+  }
+  return `${sDay} ${sMonth} – ${eDay} ${eMonth}`;
+}
+
 // === Rendering ===
 
 // Store current plan data so we can mutate it on drag
@@ -451,10 +471,28 @@ function renderPlan(groups) {
       : `Week ${group.startWeek}-${group.endWeek}`;
     label.appendChild(name);
 
-    const meta = document.createElement('div');
+    const dateEl = document.createElement('div');
+    dateEl.className = 'week-date';
+    dateEl.textContent = formatWeekDateRange(group.template.weekStart);
+    label.appendChild(dateEl);
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'week-progress-wrap';
+
+    const meta = document.createElement('span');
     meta.className = 'week-meta week-progress';
     meta.textContent = `0/${group.template.totalSessions}`;
-    label.appendChild(meta);
+    progressWrap.appendChild(meta);
+
+    const bar = document.createElement('div');
+    bar.className = 'progress-bar';
+    const fill = document.createElement('div');
+    fill.className = 'progress-fill';
+    fill.style.width = '0%';
+    bar.appendChild(fill);
+    progressWrap.appendChild(bar);
+
+    label.appendChild(progressWrap);
 
     if (group.template.isRecovery) {
       const badge = document.createElement('div');
@@ -596,11 +634,17 @@ function checkAdjacentConflicts() {
 }
 
 function updateProgress(row, group) {
-  const blocks = row.querySelectorAll('.workout-block:not(.workout-rest)');
   const completed = row.querySelectorAll('.workout-block.completed:not(.workout-rest)');
+  const total = group.template.totalSessions;
   const meta = row.querySelector('.week-progress');
   if (meta) {
-    meta.textContent = `${completed.length}/${group.template.totalSessions}`;
+    meta.textContent = `${completed.length}/${total}`;
+  }
+  const fill = row.querySelector('.progress-fill');
+  if (fill) {
+    const pct = total > 0 ? (completed.length / total) * 100 : 0;
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle('progress-complete', completed.length === total && total > 0);
   }
 }
 
