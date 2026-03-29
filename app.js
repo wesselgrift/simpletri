@@ -894,9 +894,6 @@ function initDrag(e, block) {
     // Use the last cell we hovered over during movement
     const cell = lastDropTarget;
     if (cell && dragData) {
-      if (dragSource) {
-        dragSource.dataset.justDragged = 'true';
-      }
       const isTemplate = !!cell.closest('#template-grid');
       if (isTemplate) {
         performTemplateDrop(cell);
@@ -1297,11 +1294,18 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
     if (skippedWorkouts.has(key)) {
       block.classList.add('skipped');
     }
-    block.addEventListener('click', (e) => {
-      if (block.dataset.justDragged) {
-        delete block.dataset.justDragged;
-        return;
-      }
+
+    const toggle = document.createElement('button');
+    toggle.className = 'workout-status-toggle';
+    toggle.setAttribute('aria-label', 'Toggle workout status');
+    block.appendChild(toggle);
+
+    toggle.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+    });
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
       const k = `${groupIdx}-${dayIdx}-${workoutIdx}`;
       const isCompleted = completedWorkouts.has(k);
       const isSkipped = skippedWorkouts.has(k);

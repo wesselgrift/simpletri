@@ -657,26 +657,77 @@ header h1 {
 .template-grid .workout-block {
   cursor: grab;
 }
-.workout-block.completed {
-  opacity: 0.45;
+
+/* Status toggle button */
+.workout-status-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.3;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s, transform 0.1s;
+  color: inherit;
+  font-size: 0;
+  line-height: 1;
+  z-index: 2;
 }
-.workout-block.completed .workout-type::after {
-  content: ' \2713';
+.workout-status-toggle:hover {
+  opacity: 0.7;
+  transform: scale(1.15);
+}
+.workout-status-toggle:active {
+  transform: scale(0.95);
+}
+
+.workout-block.completed .workout-status-toggle {
+  opacity: 0.85;
+  background: #4caf50;
+  border-color: #4caf50;
+  color: #fff;
+  font-size: 9px;
+}
+.workout-block.completed .workout-status-toggle::after {
+  content: '\2713';
+}
+
+.workout-block.skipped .workout-status-toggle {
+  opacity: 0.85;
+  background: #e57373;
+  border-color: #e57373;
+  color: #fff;
+  font-size: 9px;
+}
+.workout-block.skipped .workout-status-toggle::after {
+  content: '\2717';
+}
+
+.workout-block.completed {
+  opacity: 0.5;
 }
 .workout-block.skipped {
-  opacity: 0.35;
+  opacity: 0.4;
 }
 .workout-block.skipped .workout-type {
   text-decoration: line-through;
-}
-.workout-block.skipped .workout-type::after {
-  content: ' \2717';
 }
 
 /* Drag states */
 .workout-block.dragging {
   opacity: 0.35;
   transform: scale(0.95);
+}
+.workout-block.dragging .workout-status-toggle,
+.drag-ghost .workout-status-toggle {
+  display: none;
 }
 .drag-ghost {
   position: fixed;
@@ -724,5 +775,11 @@ body.is-dragging * {
   }
   .workout-block {
     padding: 0.3rem 0.4rem;
+  }
+  .workout-status-toggle {
+    width: 14px;
+    height: 14px;
+    top: 3px;
+    right: 3px;
   }
 }
