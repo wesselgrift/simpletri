@@ -1063,13 +1063,6 @@ function savePlanToStorage() {
   localStorage.setItem('simpletri-config', JSON.stringify(config));
 }
 
-document.getElementById('save-btn').addEventListener('click', () => {
-  savePlanToStorage();
-  const btn = document.getElementById('save-btn');
-  btn.textContent = 'Saved!';
-  setTimeout(() => { btn.textContent = 'Save Plan'; }, 1500);
-});
-
 document.getElementById('delete-btn').addEventListener('click', () => {
   if (!confirm('Delete your plan and all saved data?')) return;
   localStorage.removeItem('simpletri-plan');
