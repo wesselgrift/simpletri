@@ -994,7 +994,9 @@ function performPlanDrop(cell) {
 }
 
 function rerenderWeekRow(groupIdx) {
-  const row = document.querySelector(`.week-row[data-group-idx="${groupIdx}"]`);
+  const planGrid = document.getElementById('plan-grid');
+  if (!planGrid) return;
+  const row = planGrid.querySelector(`.week-row[data-group-idx="${groupIdx}"]`);
   if (!row) return;
 
   const group = currentGroups[groupIdx];
