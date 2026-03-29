@@ -1,6 +1,6 @@
 // === SimpleTri — Training Plan Generator ===
 
-const DAYS = ['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'];
+const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // Race distances in km: [swim, bike, run]
@@ -134,11 +134,11 @@ function getZoneLabel(intensity, discipline) {
 
 function getDisciplineLabel(discipline) {
   switch (discipline) {
-    case 'run': return 'HARDLOPEN';
-    case 'bike': return 'FIETSEN';
-    case 'swim': return 'ZWEMMEN';
-    case 'strength': return 'KRACHT';
-    case 'rest': return 'RUST';
+    case 'run': return 'RUN';
+    case 'bike': return 'BIKE';
+    case 'swim': return 'SWIM';
+    case 'strength': return 'STRENGTH';
+    case 'rest': return 'REST';
     default: return discipline.toUpperCase();
   }
 }
@@ -512,7 +512,7 @@ function weeksAreSimilar(a, b) {
 
 // === Date Formatting ===
 
-const MONTH_SHORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function formatWeekDateRange(weekStart) {
   const start = new Date(weekStart);
@@ -599,7 +599,7 @@ function renderPlan(groups) {
     if (group.template.isRecovery) {
       const badge = document.createElement('div');
       badge.className = 'recovery-badge';
-      badge.textContent = 'HERSTEL';
+      badge.textContent = 'RECOVERY';
       label.appendChild(badge);
     }
     if (group.template.isTaper && !group.template.isRecovery) {
@@ -1107,7 +1107,7 @@ function showSection(id) {
     const raceDate = new Date(currentPlanConfig.raceDate);
     const startDate = new Date(currentPlanConfig.planStart);
     const totalWeeks = Math.max(1, Math.floor((raceDate - startDate) / (1000 * 60 * 60 * 24 * 7)));
-    const raceDateStr = raceDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    const raceDateStr = raceDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 
     document.getElementById('plan-title').textContent = `Your ${label} plan`;
     document.getElementById('plan-subtitle').textContent = `${raceDateStr} · ${totalWeeks} weeks of training`;
