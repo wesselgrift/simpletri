@@ -653,9 +653,7 @@ header h1 {
   transition: opacity 0.15s, box-shadow 0.15s, transform 0.15s;
   user-select: none;
 }
-.plan-display .workout-block:not(.workout-rest) {
-  cursor: pointer;
-}
+.plan-display .workout-block:not(.workout-rest),
 .template-grid .workout-block {
   cursor: grab;
 }
@@ -679,6 +677,18 @@ header h1 {
 .workout-block.dragging {
   opacity: 0.35;
   transform: scale(0.95);
+}
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.85;
+  transform: scale(0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+body.is-dragging,
+body.is-dragging * {
+  cursor: grabbing !important;
 }
 .day-cell.drag-over {
   background: #e8f5e9;

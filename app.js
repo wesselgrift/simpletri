@@ -708,11 +708,6 @@ function renderPlan(groups) {
       cell.dataset.groupIdx = groupIdx;
       cell.dataset.dayIdx = d;
 
-      cell.addEventListener('dragover', handleDragOver);
-      cell.addEventListener('dragenter', handleDragEnter);
-      cell.addEventListener('dragleave', handleDragLeave);
-      cell.addEventListener('drop', handlePlanDrop);
-
       const dayWorkouts = group.template.days[d];
       dayWorkouts.forEach((workout, workoutIdx) => {
         const block = createWorkoutBlock(workout, groupIdx, d, workoutIdx, false);
@@ -791,68 +786,133 @@ function renderPlan(groups) {
   }
 }
 
-// === Drag and Drop ===
+// === Drag and Drop (mouse-based for full cursor control) ===
 
 let dragData = null;
+let dragGhost = null;
+let dragSource = null;
+let isDragging = false;
+let lastDropTarget = null;
+const DRAG_THRESHOLD = 5;
 
-function handleDragStart(e) {
-  const block = e.currentTarget;
-  dragData = {
-    groupIdx: parseInt(block.dataset.groupIdx),
-    dayIdx: parseInt(block.dataset.dayIdx),
-    workoutIdx: parseInt(block.dataset.workoutIdx),
-  };
-  block.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  // Need to set data for Firefox
-  e.dataTransfer.setData('text/plain', '');
+function getDraggedWorkout() {
+  if (!dragData) return null;
+  const group = currentGroups[dragData.groupIdx];
+  if (!group) return null;
+  const dayWorkouts = group.template.days[dragData.dayIdx];
+  if (!dayWorkouts) return null;
+  return dayWorkouts[dragData.workoutIdx] || null;
 }
 
-function handleDragEnd(e) {
-  e.currentTarget.classList.remove('dragging');
-  e.currentTarget.dataset.justDragged = 'true';
-  // Clean up all drag-over states
-  document.querySelectorAll('.day-cell.drag-over').forEach(el => {
-    el.classList.remove('drag-over');
-  });
-  document.querySelectorAll('.day-cell.drag-over-warn').forEach(el => {
-    el.classList.remove('drag-over-warn');
+function findCellUnderPoint(x, y) {
+  if (dragGhost) dragGhost.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  if (dragGhost) dragGhost.style.display = '';
+  return el?.closest('.day-cell[data-day-idx][data-group-idx]') || null;
+}
+
+function cleanupDrag() {
+  if (dragGhost) {
+    dragGhost.remove();
+    dragGhost = null;
+  }
+  if (dragSource) {
+    dragSource.classList.remove('dragging');
+  }
+  document.body.classList.remove('is-dragging');
+  document.querySelectorAll('.day-cell.drag-over, .day-cell.drag-over-warn').forEach(c => {
+    c.classList.remove('drag-over', 'drag-over-warn');
   });
   dragData = null;
+  dragSource = null;
+  lastDropTarget = null;
+  isDragging = false;
 }
 
-function handleDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
+function initDrag(e, block) {
+  if (isDragging) return;
+
+  const startX = e.clientX;
+  const startY = e.clientY;
+
+  const onMove = (me) => {
+    me.preventDefault();
+    const dx = me.clientX - startX;
+    const dy = me.clientY - startY;
+
+    if (!isDragging && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+      isDragging = true;
+      dragSource = block;
+      dragData = {
+        groupIdx: parseInt(block.dataset.groupIdx),
+        dayIdx: parseInt(block.dataset.dayIdx),
+        workoutIdx: parseInt(block.dataset.workoutIdx),
+      };
+
+      block.classList.add('dragging');
+      document.body.classList.add('is-dragging');
+
+      dragGhost = block.cloneNode(true);
+      dragGhost.classList.add('drag-ghost');
+      dragGhost.style.width = block.offsetWidth + 'px';
+      document.body.appendChild(dragGhost);
+    }
+
+    if (isDragging && dragGhost) {
+      dragGhost.style.left = (me.clientX - dragGhost.offsetWidth / 2) + 'px';
+      dragGhost.style.top = (me.clientY - 10) + 'px';
+
+      document.querySelectorAll('.day-cell.drag-over, .day-cell.drag-over-warn').forEach(c => {
+        c.classList.remove('drag-over', 'drag-over-warn');
+      });
+
+      const cell = findCellUnderPoint(me.clientX, me.clientY);
+      lastDropTarget = cell;
+
+      if (cell && dragData) {
+        const targetGroup = parseInt(cell.dataset.groupIdx);
+        const targetDay = parseInt(cell.dataset.dayIdx);
+        if (targetGroup === dragData.groupIdx) {
+          const workout = getDraggedWorkout();
+          if (workout) {
+            const hasConflict = wouldCauseAdjacentConflict(
+              currentGroups[targetGroup], targetDay, workout.discipline, dragData.dayIdx
+            );
+            cell.classList.add(hasConflict ? 'drag-over-warn' : 'drag-over');
+          }
+        }
+      }
+    }
+  };
+
+  const onUp = (me) => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+
+    if (!isDragging) return;
+
+    // Use the last cell we hovered over during movement
+    const cell = lastDropTarget;
+    if (cell && dragData) {
+      if (dragSource) {
+        dragSource.dataset.justDragged = 'true';
+      }
+      const isTemplate = !!cell.closest('#template-grid');
+      if (isTemplate) {
+        performTemplateDrop(cell);
+      } else {
+        performPlanDrop(cell);
+      }
+    }
+
+    cleanupDrag();
+  };
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
-function handleDragEnter(e) {
-  e.preventDefault();
-  const cell = e.currentTarget;
-  if (!dragData) return;
-
-  const targetGroup = parseInt(cell.dataset.groupIdx);
-  const targetDay = parseInt(cell.dataset.dayIdx);
-
-  if (targetGroup !== dragData.groupIdx) return;
-
-  const group = currentGroups[targetGroup];
-  const workout = group.template.days[dragData.dayIdx][dragData.workoutIdx];
-  const hasConflict = wouldCauseAdjacentConflict(group, targetDay, workout.discipline, dragData.dayIdx);
-  cell.classList.add(hasConflict ? 'drag-over-warn' : 'drag-over');
-}
-
-function handleDragLeave(e) {
-  e.currentTarget.classList.remove('drag-over');
-  e.currentTarget.classList.remove('drag-over-warn');
-}
-
-function handlePlanDrop(e) {
-  e.preventDefault();
-  const cell = e.currentTarget;
-  cell.classList.remove('drag-over');
-  cell.classList.remove('drag-over-warn');
-
+function performPlanDrop(cell) {
   if (!dragData) return;
 
   const targetGroupIdx = parseInt(cell.dataset.groupIdx);
@@ -861,11 +921,16 @@ function handlePlanDrop(e) {
   const sourceDayIdx = dragData.dayIdx;
   const workoutIdx = dragData.workoutIdx;
 
+  if (isNaN(targetGroupIdx) || isNaN(targetDayIdx)) return;
   if (targetGroupIdx !== sourceGroupIdx) return;
   if (targetDayIdx === sourceDayIdx) return;
 
   const groupIdx = sourceGroupIdx;
+  if (!currentGroups[groupIdx]) return;
   const days = currentGroups[groupIdx].template.days;
+
+  const workout = days[sourceDayIdx]?.[workoutIdx];
+  if (!workout) return;
 
   // Map workout objects to their old keys before the move
   const oldKeyMap = new Map();
@@ -875,7 +940,6 @@ function handlePlanDrop(e) {
     });
   }
 
-  const workout = days[sourceDayIdx][workoutIdx];
   const targetHasRest = days[targetDayIdx].some(w => w.discipline === 'rest');
   const sourceIsRest = workout.discipline === 'rest';
 
@@ -1167,11 +1231,6 @@ function renderTemplate(template) {
     cell.dataset.groupIdx = 0;
     cell.dataset.dayIdx = d;
 
-    cell.addEventListener('dragover', handleDragOver);
-    cell.addEventListener('dragenter', handleDragEnter);
-    cell.addEventListener('dragleave', handleDragLeave);
-    cell.addEventListener('drop', handleTemplateDrop);
-
     const dayWorkouts = templateGroup.template.days[d];
     dayWorkouts.forEach((workout, workoutIdx) => {
       const block = createWorkoutBlock(workout, 0, d, workoutIdx, true);
@@ -1192,9 +1251,10 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   block.dataset.dayIdx = dayIdx;
   block.dataset.workoutIdx = workoutIdx;
 
-  block.draggable = true;
-  block.addEventListener('dragstart', handleDragStart);
-  block.addEventListener('dragend', handleDragEnd);
+  block.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    initDrag(e, block);
+  });
 
   const typeEl = document.createElement('div');
   typeEl.className = 'workout-type';
@@ -1267,22 +1327,20 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   return block;
 }
 
-function handleTemplateDrop(e) {
-  e.preventDefault();
-  const cell = e.currentTarget;
-  cell.classList.remove('drag-over');
-  cell.classList.remove('drag-over-warn');
-
+function performTemplateDrop(cell) {
   if (!dragData) return;
 
   const targetDayIdx = parseInt(cell.dataset.dayIdx);
+  if (isNaN(targetDayIdx)) return;
   const sourceDayIdx = dragData.dayIdx;
   const workoutIdx = dragData.workoutIdx;
 
   if (targetDayIdx === sourceDayIdx) return;
 
+  if (!currentTemplate) return;
   const days = currentTemplate.days;
-  const workout = days[sourceDayIdx][workoutIdx];
+  const workout = days[sourceDayIdx]?.[workoutIdx];
+  if (!workout) return;
 
   const targetHasRest = days[targetDayIdx].some(w => w.discipline === 'rest');
   const sourceIsRest = workout.discipline === 'rest';
