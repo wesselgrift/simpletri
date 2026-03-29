@@ -147,6 +147,43 @@ function getDisciplineClass(discipline) {
   return `workout-${discipline}`;
 }
 
+// === Workout Suggestions ===
+
+function getWorkoutSuggestion(discipline, intensity, isLong, phase) {
+  if (discipline === 'strength' || discipline === 'rest') return '';
+
+  if (discipline === 'run') {
+    if (isLong) return 'Long run @ zone 1-2';
+    if (intensity === 'easy') return 'Steady run @ zone 1-2';
+    if (intensity === 'threshold') {
+      if (phase === 'taper') return '10 min warm-up\n3x 800m @ zone 4\n400m recovery\n10 min cool-down';
+      return '10 min warm-up\n4x 800m @ zone 4\n400m recovery\n10 min cool-down';
+    }
+    if (intensity === 'interval') return '10 min warm-up\n6x 400m @ zone 5\n400m recovery\n10 min cool-down';
+  }
+
+  if (discipline === 'bike') {
+    if (isLong) return 'Long ride @ zone 1-2';
+    if (intensity === 'easy') return 'Steady ride @ zone 1-2';
+    if (intensity === 'threshold') {
+      if (phase === 'taper') return '15 min warm-up\n2x 10 min @ zone 4\n5 min recovery\nCool-down';
+      return '15 min warm-up\n2x 15 min @ zone 4\n5 min recovery\nCool-down';
+    }
+    if (intensity === 'interval') return '15 min warm-up\n5x 3 min @ zone 5\n3 min recovery\nCool-down';
+  }
+
+  if (discipline === 'swim') {
+    if (intensity === 'easy') return 'Steady swim, focus on technique';
+    if (intensity === 'threshold') {
+      if (phase === 'taper') return '400m warm-up\n6x 100m @ zone 4\n15s recovery\n200m cool-down';
+      return '400m warm-up\n8x 100m @ zone 4\n15s recovery\n200m cool-down';
+    }
+    if (intensity === 'interval') return '400m warm-up\n6x 50m @ zone 5\n20s recovery\n200m cool-down';
+  }
+
+  return '';
+}
+
 // === Plan Generation ===
 
 function generatePlan(config) {
@@ -244,6 +281,7 @@ function generatePlan(config) {
         duration: isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration,
         intensity,
         isLong,
+        suggestion: getWorkoutSuggestion('run', intensity, isLong, phase),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
@@ -254,6 +292,7 @@ function generatePlan(config) {
         duration: isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration,
         intensity,
         isLong,
+        suggestion: getWorkoutSuggestion('bike', intensity, isLong, phase),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
@@ -262,6 +301,7 @@ function generatePlan(config) {
         discipline: 'swim',
         duration: swimDuration,
         intensity,
+        suggestion: getWorkoutSuggestion('swim', intensity, false, phase),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, strengthSessions - 1) : strengthSessions); i++) {
@@ -908,6 +948,13 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
     zoneEl.className = 'workout-zone';
     zoneEl.textContent = getZoneLabel(workout.intensity, workout.discipline);
     block.appendChild(zoneEl);
+  }
+
+  if (!isTemplate && workout.suggestion) {
+    const suggEl = document.createElement('div');
+    suggEl.className = 'workout-suggestion';
+    suggEl.textContent = workout.suggestion;
+    block.appendChild(suggEl);
   }
 
   if (!isTemplate) {
