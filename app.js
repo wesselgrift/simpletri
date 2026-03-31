@@ -253,64 +253,120 @@ function getDisciplineClass(discipline) {
 
 // === Workout Suggestions ===
 
+const WORKOUT_ENVELOPE = {
+  run:  { threshold: { warmup: 10, cooldown: 10, zone: 'zone 4' },
+          interval:  { warmup: 10, cooldown: 10, zone: 'zone 5' } },
+  bike: { threshold: { warmup: 15, cooldown: 10, zone: 'zone 4' },
+          interval:  { warmup: 15, cooldown: 10, zone: 'zone 5' } },
+  swim: { threshold: { warmup: 8, cooldown: 4, zone: 'zone 4' },
+          interval:  { warmup: 8, cooldown: 4, zone: 'zone 5' } },
+};
+
 const WORKOUT_STRUCTURE = {
   run: {
-    threshold: { warmup: 10, cooldown: 10, repLabel: '800m', repWork: 3.5, recoveryLabel: '400m recovery', recoveryTime: 1.5, zone: 'zone 4' },
-    interval:  { warmup: 10, cooldown: 10, repLabel: '400m', repWork: 1.5, recoveryLabel: '400m recovery', recoveryTime: 2.5, zone: 'zone 5' },
+    threshold: [
+      { repLabel: '800m',  repWork: 3.5, recoveryLabel: '400m recovery', recoveryTime: 1.5, maxReps: 6 },
+      { repLabel: '1200m', repWork: 5.5, recoveryLabel: '600m recovery', recoveryTime: 2.5, maxReps: 4 },
+    ],
+    interval: [
+      { repLabel: '400m', repWork: 1.5, recoveryLabel: '400m recovery', recoveryTime: 2.5, maxReps: 8 },
+      { repLabel: '600m', repWork: 2.5, recoveryLabel: '400m recovery', recoveryTime: 2.5, maxReps: 6 },
+    ],
   },
   bike: {
-    threshold: { warmup: 15, cooldown: 10, repLabel: 'min', repWork: 10, recoveryLabel: '5 min recovery', recoveryTime: 5, zone: 'zone 4' },
-    interval:  { warmup: 15, cooldown: 10, repLabel: 'min', repWork: 3,  recoveryLabel: '3 min recovery', recoveryTime: 3, zone: 'zone 5' },
+    threshold: [
+      { repLabel: '10 min', repWork: 10, recoveryLabel: '5 min recovery', recoveryTime: 5, maxReps: 4 },
+      { repLabel: '15 min', repWork: 15, recoveryLabel: '5 min recovery', recoveryTime: 5, maxReps: 3 },
+    ],
+    interval: [
+      { repLabel: '3 min', repWork: 3, recoveryLabel: '3 min recovery', recoveryTime: 3, maxReps: 8 },
+      { repLabel: '5 min', repWork: 5, recoveryLabel: '3 min recovery', recoveryTime: 3, maxReps: 6 },
+    ],
   },
   swim: {
-    threshold: { warmup: 8, cooldown: 4, warmupLabel: '400m warm-up', cooldownLabel: '200m cool-down', repLabel: '100m', repWork: 1.75, recoveryLabel: '15s recovery', recoveryTime: 0.25, zone: 'zone 4' },
-    interval:  { warmup: 8, cooldown: 4, warmupLabel: '400m warm-up', cooldownLabel: '200m cool-down', repLabel: '50m',  repWork: 0.75, recoveryLabel: '20s recovery', recoveryTime: 0.33, zone: 'zone 5' },
+    threshold: [
+      { repLabel: '100m', repWork: 1.75, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 10 },
+      { repLabel: '200m', repWork: 3.5,  recoveryLabel: '20s recovery', recoveryTime: 0.33, maxReps: 6 },
+    ],
+    interval: [
+      { repLabel: '50m',  repWork: 0.75, recoveryLabel: '20s recovery', recoveryTime: 0.33, maxReps: 12 },
+      { repLabel: '100m', repWork: 1.75, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 8 },
+    ],
   },
 };
 
-function buildStructuredSuggestion(discipline, intensity, duration) {
-  const s = WORKOUT_STRUCTURE[discipline]?.[intensity];
-  if (!s) return '';
+function swimDistanceLabel(minutes) {
+  const meters = Math.round(minutes / 2 * 100 / 50) * 50;
+  return `${meters}m`;
+}
 
-  let warmup = s.warmup;
-  let cooldown = s.cooldown;
+function buildStructuredSuggestion(discipline, intensity, duration) {
+  const env = WORKOUT_ENVELOPE[discipline]?.[intensity];
+  const tiers = WORKOUT_STRUCTURE[discipline]?.[intensity];
+  if (!env || !tiers) return '';
+
+  let warmup = env.warmup;
+  let cooldown = env.cooldown;
+  const firstTier = tiers[0];
 
   // Scale down warm-up/cool-down for very short sessions
-  if (duration <= warmup + cooldown + s.repWork) {
+  if (duration <= warmup + cooldown + firstTier.repWork) {
     warmup = Math.min(warmup, Math.floor(duration * 0.3));
     cooldown = Math.min(cooldown, Math.floor(duration * 0.2));
   }
 
-  const availableTime = duration - warmup - cooldown;
-  if (availableTime < s.repWork) {
-    const wuLabel = s.warmupLabel || `${warmup} min warm-up`;
-    const cdLabel = s.cooldownLabel || `${cooldown} min cool-down`;
-    return `${wuLabel}\nShort ${s.zone} effort\n${cdLabel}`;
+  let availableTime = duration - warmup - cooldown;
+  if (availableTime < firstTier.repWork) {
+    const wuLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
+    const cdLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
+    return `${wuLabel}\nShort ${env.zone} effort\n${cdLabel}`;
   }
 
-  const timePerSet = s.repWork + s.recoveryTime;
-  const reps = Math.max(1, Math.floor(availableTime / timePerSet));
-
-  const warmupLabel = s.warmupLabel || `${warmup} min warm-up`;
-  const cooldownLabel = s.cooldownLabel || `${cooldown} min cool-down`;
-
-  // Bike threshold: show sustained blocks with scaled duration
-  if (discipline === 'bike' && intensity === 'threshold') {
-    const totalRecovery = (reps - 1) * s.recoveryTime;
-    const workMins = Math.round((availableTime - totalRecovery) / reps);
-    if (reps === 1) {
-      return `${warmupLabel}\n${Math.round(availableTime)} min @ ${s.zone}\n${cooldownLabel}`;
+  // Find the right tier: use the first where reps fit within maxReps
+  let chosenTier = tiers[tiers.length - 1];
+  let reps = chosenTier.maxReps;
+  for (const tier of tiers) {
+    const timePerSet = tier.repWork + tier.recoveryTime;
+    const calcReps = Math.max(1, Math.floor(availableTime / timePerSet));
+    if (calcReps <= tier.maxReps) {
+      chosenTier = tier;
+      reps = calcReps;
+      break;
     }
-    return `${warmupLabel}\n${reps}x ${workMins} min @ ${s.zone}\n${s.recoveryLabel}\n${cooldownLabel}`;
+  }
+
+  // Redistribute leftover time to warm-up and cool-down
+  const usedTime = reps * (chosenTier.repWork + chosenTier.recoveryTime);
+  const leftover = availableTime - usedTime;
+  if (leftover > 1) {
+    const extraWarmup = Math.floor(leftover * 0.6);
+    const extraCooldown = Math.floor(leftover * 0.4);
+    warmup += extraWarmup;
+    cooldown += extraCooldown;
+  }
+
+  // Build labels
+  const warmupLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
+  const cooldownLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
+
+  // Bike threshold: show sustained blocks with dynamically scaled duration
+  if (discipline === 'bike' && intensity === 'threshold') {
+    const workAvailable = duration - warmup - cooldown;
+    const totalRecovery = (reps - 1) * chosenTier.recoveryTime;
+    const workMins = Math.round((workAvailable - totalRecovery) / reps);
+    if (reps === 1) {
+      return `${warmupLabel}\n${Math.round(workAvailable)} min @ ${env.zone}\n${cooldownLabel}`;
+    }
+    return `${warmupLabel}\n${reps}x ${workMins} min @ ${env.zone}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
   }
 
   // Bike interval: time-based reps
   if (discipline === 'bike') {
-    return `${warmupLabel}\n${reps}x ${s.repWork} min @ ${s.zone}\n${s.recoveryLabel}\n${cooldownLabel}`;
+    return `${warmupLabel}\n${reps}x ${chosenTier.repWork} min @ ${env.zone}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
   }
 
   // Run and swim: distance-based reps
-  return `${warmupLabel}\n${reps}x ${s.repLabel} @ ${s.zone}\n${s.recoveryLabel}\n${cooldownLabel}`;
+  return `${warmupLabel}\n${reps}x ${chosenTier.repLabel} @ ${env.zone}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
 }
 
 function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration) {
