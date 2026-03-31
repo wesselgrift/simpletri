@@ -755,19 +755,19 @@ function renderPlan(groups) {
 
       if (group.template.isRecovery) {
         const badge = document.createElement('div');
-        badge.className = 'recovery-badge';
+        badge.className = 'phase-badge phase-recovery';
         badge.textContent = 'RECOVERY';
         label.appendChild(badge);
       }
       if (group.template.isTaper && !group.template.isRecovery) {
         const badge = document.createElement('div');
-        badge.className = 'recovery-badge';
+        badge.className = 'phase-badge phase-taper';
         badge.textContent = 'TAPER';
         label.appendChild(badge);
       }
       if (!group.template.isRecovery && !group.template.isTaper && group.template.phase) {
         const phaseBadge = document.createElement('div');
-        phaseBadge.className = 'phase-badge';
+        phaseBadge.className = `phase-badge phase-${group.template.phase}`;
         phaseBadge.textContent = group.template.phase.toUpperCase();
         label.appendChild(phaseBadge);
       }

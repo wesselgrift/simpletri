@@ -33,7 +33,17 @@
   --rest-border: #d9d5ce;
   --rest-text: #8a857d;
 
-  --recovery-badge: #e8dfd1;
+  --base-badge-bg: #dbeafe;
+  --base-badge-text: #1d4ed8;
+  --build-badge-bg: #fef3c7;
+  --build-badge-text: #b45309;
+  --peak-badge-bg: #ffe4e6;
+  --peak-badge-text: #be123c;
+  --recovery-badge-bg: #dcfce7;
+  --recovery-badge-text: #15803d;
+  --taper-badge-bg: #f3e8ff;
+  --taper-badge-text: #7e22ce;
+
   --vacation-badge: #d0e8f2;
   --vacation-bg: #f4f9fc;
 
@@ -688,29 +698,36 @@ header h1 {
   color: var(--text-muted);
   margin-top: 0.2rem;
 }
-.week-label .recovery-badge {
+.phase-badge {
   display: inline-block;
   font-size: 0.65rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: var(--recovery-badge);
-  color: var(--text-muted);
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
   margin-top: 0.3rem;
   width: fit-content;
 }
-.phase-badge {
-  display: inline-block;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: var(--border);
-  color: var(--text-muted);
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  margin-top: 0.3rem;
-  width: fit-content;
+.phase-badge.phase-base {
+  background: var(--base-badge-bg);
+  color: var(--base-badge-text);
+}
+.phase-badge.phase-build {
+  background: var(--build-badge-bg);
+  color: var(--build-badge-text);
+}
+.phase-badge.phase-peak {
+  background: var(--peak-badge-bg);
+  color: var(--peak-badge-text);
+}
+.phase-badge.phase-recovery {
+  background: var(--recovery-badge-bg);
+  color: var(--recovery-badge-text);
+}
+.phase-badge.phase-taper {
+  background: var(--taper-badge-bg);
+  color: var(--taper-badge-text);
 }
 
 /* Vacation week */
