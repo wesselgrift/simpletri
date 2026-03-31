@@ -6,6 +6,7 @@ const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 // Race distances in km: [swim, bike, run]
 const RACE_LABELS = {
   sprint: 'Sprint',
+  quarter: 'Quarter',
   olympic: 'Olympic',
   half: 'Half Ironman',
   full: 'Ironman',
@@ -13,6 +14,7 @@ const RACE_LABELS = {
 
 const RACE_DISTANCES = {
   sprint:  { swim: 0.75,  bike: 20,  run: 5 },
+  quarter: { swim: 1.0,   bike: 40,  run: 10 },
   olympic: { swim: 1.5,   bike: 40,  run: 10 },
   half:    { swim: 1.9,   bike: 90,  run: 21.1 },
   full:    { swim: 3.8,   bike: 180, run: 42.2 },
@@ -165,6 +167,11 @@ const PEAK_MINUTES = {
     bike: { beginner: 60, intermediate: 75, advanced: 90 },
     swim: { beginner: 35, intermediate: 40, advanced: 45 },
   },
+  quarter: {
+    run:  { beginner: 40, intermediate: 50, advanced: 60 },
+    bike: { beginner: 70, intermediate: 85, advanced: 100 },
+    swim: { beginner: 40, intermediate: 45, advanced: 55 },
+  },
   olympic: {
     run:  { beginner: 45, intermediate: 55, advanced: 65 },
     bike: { beginner: 75, intermediate: 90, advanced: 105 },
@@ -185,6 +192,7 @@ const PEAK_MINUTES = {
 // Long session multiplier by race distance (applied to regular session duration)
 const LONG_SESSION_MULTIPLIER = {
   sprint:  { run: 1.5, bike: 1.5 },
+  quarter: { run: 1.6, bike: 1.7 },
   olympic: { run: 1.7, bike: 1.8 },
   half:    { run: 2.0, bike: 2.5 },
   full:    { run: 2.5, bike: 3.0 },
@@ -193,6 +201,7 @@ const LONG_SESSION_MULTIPLIER = {
 // Taper length in weeks by race distance
 const TAPER_WEEKS = {
   sprint:  1,
+  quarter: 1,
   olympic: 1,
   half:    2,
   full:    3,
@@ -204,6 +213,17 @@ const PHASE_SPLITS = {
   build: 0.35,
   peak:  0.25,
 };
+
+// Target weekly non-strength minutes by hours setting (midpoint of each range)
+const WEEKLY_HOURS_TARGET = {
+  'lt3':  150,
+  '3-6':  270,
+  '6-10': 480,
+  '10-15': 750,
+  '15+':  960,
+};
+
+const SESSION_MIN_MINUTES = { run: 15, bike: 20, swim: 15 };
 
 // === Zone Labels ===
 
@@ -453,9 +473,34 @@ function generatePlan(config) {
       return Math.round(mins * volumeMultiplier / 5) * 5; // Round to 5 min
     }
 
-    const runDuration = sessionDuration(runRange);
-    const bikeDuration = sessionDuration(bikeRange);
-    const swimDuration = sessionDuration(swimRange);
+    let runDuration = sessionDuration(runRange);
+    let bikeDuration = sessionDuration(bikeRange);
+    let swimDuration = sessionDuration(swimRange);
+
+    // Scale durations so total non-strength volume matches weekly hours target
+    const longMult = LONG_SESSION_MULTIPLIER[raceType] || { run: 1.5, bike: 1.5 };
+    const effRunSessions = isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions;
+    const effBikeSessions = isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions;
+    const effSwimSessions = isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions;
+
+    let estimatedTotal = swimDuration * effSwimSessions;
+    if (effRunSessions > 0) {
+      const hasLongRun = runSessions > 1;
+      const regularRuns = hasLongRun ? effRunSessions - 1 : effRunSessions;
+      estimatedTotal += runDuration * regularRuns + (hasLongRun ? runDuration * longMult.run : 0);
+    }
+    if (effBikeSessions > 0) {
+      const regularBikes = effBikeSessions - 1;
+      estimatedTotal += bikeDuration * regularBikes + bikeDuration * longMult.bike;
+    }
+
+    const targetMinutes = WEEKLY_HOURS_TARGET[weeklyHours] || 480;
+    if (estimatedTotal > 0) {
+      const scaleFactor = Math.min(2.0, Math.max(0.5, targetMinutes / estimatedTotal));
+      runDuration = Math.max(SESSION_MIN_MINUTES.run, Math.round(runDuration * scaleFactor / 5) * 5);
+      bikeDuration = Math.max(SESSION_MIN_MINUTES.bike, Math.round(bikeDuration * scaleFactor / 5) * 5);
+      swimDuration = Math.max(SESSION_MIN_MINUTES.swim, Math.round(swimDuration * scaleFactor / 5) * 5);
+    }
 
     // Determine workout distribution across the week
     const daySlots = new Array(7).fill(null).map(() => []);
@@ -464,7 +509,6 @@ function generatePlan(config) {
     const restDayIndices = getRestDayIndices(restDays, longDay);
 
     // Build workout pool
-    const longMult = LONG_SESSION_MULTIPLIER[raceType] || { run: 1.5, bike: 1.5 };
     const workouts = [];
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
       const isLong = i === runSessions - 1 && runSessions > 1;
