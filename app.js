@@ -311,8 +311,8 @@ function buildStructuredSuggestion(discipline, intensity, duration) {
 
   // Scale down warm-up/cool-down for very short sessions
   if (duration <= warmup + cooldown + firstTier.repWork) {
-    warmup = Math.min(warmup, Math.floor(duration * 0.3));
-    cooldown = Math.min(cooldown, Math.floor(duration * 0.2));
+    warmup = Math.max(5, Math.round(Math.min(warmup, Math.floor(duration * 0.3)) / 5) * 5);
+    cooldown = Math.max(5, Math.round(Math.min(cooldown, Math.floor(duration * 0.2)) / 5) * 5);
   }
 
   let availableTime = duration - warmup - cooldown;
@@ -344,6 +344,8 @@ function buildStructuredSuggestion(discipline, intensity, duration) {
     warmup += extraWarmup;
     cooldown += extraCooldown;
   }
+  warmup = Math.round(warmup / 5) * 5;
+  cooldown = Math.round(cooldown / 5) * 5;
 
   // Build labels
   const warmupLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
