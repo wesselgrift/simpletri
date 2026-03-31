@@ -239,6 +239,7 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase) {
   if (discipline === 'run') {
     if (isLong) return 'Long run @ zone 1-2';
     if (intensity === 'easy') return 'Steady run @ zone 1-2';
+    if (intensity === 'tempo') return 'Steady run @ zone 3 (sweet spot)';
     if (intensity === 'threshold') {
       if (phase === 'taper') return '10 min warm-up\n3x 800m @ zone 4\n400m recovery\n10 min cool-down';
       return '10 min warm-up\n4x 800m @ zone 4\n400m recovery\n10 min cool-down';
@@ -249,6 +250,7 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase) {
   if (discipline === 'bike') {
     if (isLong) return 'Long ride @ zone 1-2';
     if (intensity === 'easy') return 'Steady ride @ zone 1-2';
+    if (intensity === 'tempo') return 'Steady ride @ zone 3 (sweet spot)';
     if (intensity === 'threshold') {
       if (phase === 'taper') return '15 min warm-up\n2x 10 min @ zone 4\n5 min recovery\nCool-down';
       return '15 min warm-up\n2x 15 min @ zone 4\n5 min recovery\nCool-down';
@@ -258,6 +260,7 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase) {
 
   if (discipline === 'swim') {
     if (intensity === 'easy') return 'Steady swim, focus on technique';
+    if (intensity === 'tempo') return 'Steady swim @ zone 3, focus on pace';
     if (intensity === 'threshold') {
       if (phase === 'taper') return '400m warm-up\n6x 100m @ zone 4\n15s recovery\n200m cool-down';
       return '400m warm-up\n8x 100m @ zone 4\n15s recovery\n200m cool-down';
@@ -313,6 +316,7 @@ function generatePlan(config) {
     runLevel, bikeLevel, swimLevel,
     runSessions, bikeSessions, swimSessions, strengthSessions,
     restDays, polarized, recoveryWeeks, longDay,
+    weeklyHours,
     vacationWeekIndices = new Set()
   } = config;
 
@@ -415,7 +419,7 @@ function generatePlan(config) {
     const workouts = [];
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
       const isLong = i === runSessions - 1 && runSessions > 1;
-      const intensity = getSessionIntensity(i, runSessions, polarized, isLong, phase);
+      const intensity = getSessionIntensity(i, runSessions, polarized, isLong, phase, weeklyHours);
       workouts.push({
         discipline: 'run',
         duration: isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration,
@@ -426,7 +430,7 @@ function generatePlan(config) {
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
       const isLong = i === bikeSessions - 1;
-      const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase);
+      const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase, weeklyHours);
       workouts.push({
         discipline: 'bike',
         duration: isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration,
@@ -436,7 +440,7 @@ function generatePlan(config) {
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
-      const intensity = getSessionIntensity(i, swimSessions, polarized, false, phase);
+      const intensity = getSessionIntensity(i, swimSessions, polarized, false, phase, weeklyHours);
       workouts.push({
         discipline: 'swim',
         duration: swimDuration,
@@ -587,30 +591,33 @@ function generatePlan(config) {
   return groupWeeks(weeks);
 }
 
-function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, phase) {
-  if (!polarized) return 'easy';
-  if (isLong) return 'easy';
-  if (totalSessions <= 1) return 'easy';
+function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, phase, weeklyHours) {
+  const isLowVolume = weeklyHours === 'lt3' || weeklyHours === '3-6';
+  const easyOrTempo = isLowVolume ? 'tempo' : 'easy';
 
-  if (phase === 'base') return 'easy';
+  if (!polarized) return easyOrTempo;
+  if (isLong) return 'easy';
+  if (totalSessions <= 1) return easyOrTempo;
+
+  if (phase === 'base') return easyOrTempo;
 
   if (phase === 'build') {
     if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
-    return 'easy';
+    return easyOrTempo;
   }
 
   if (phase === 'peak') {
     if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
     if (sessionIndex === 2 && totalSessions >= 4) return 'interval';
-    return 'easy';
+    return easyOrTempo;
   }
 
   if (phase === 'taper') {
     if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
-    return 'easy';
+    return easyOrTempo;
   }
 
-  return 'easy';
+  return easyOrTempo;
 }
 
 function getRestDayIndices(restDays, longDay) {
