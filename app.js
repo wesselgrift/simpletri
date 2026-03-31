@@ -604,7 +604,7 @@ function generatePlan(config) {
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, strengthSessions - 1) : strengthSessions); i++) {
       workouts.push({
         discipline: 'strength',
-        duration: isRecoveryWeek ? 20 : 30 + Math.round(progress * 15 / 5) * 5,
+        duration: 60,
         intensity: 'easy',
       });
     }
