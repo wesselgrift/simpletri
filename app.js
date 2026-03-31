@@ -1992,11 +1992,178 @@ function savePlanToStorage() {
   localStorage.setItem('simpletri-config', JSON.stringify(config));
 }
 
+// === Calendar Export ===
+
+function openExportModal() {
+  if (!currentTemplate || !currentGroups.length) return;
+
+  const grid = document.getElementById('export-time-grid');
+  grid.innerHTML = '';
+
+  const saved = JSON.parse(localStorage.getItem('simpletri-export-times') || '{}');
+
+  DAYS.forEach((dayName, d) => {
+    const col = document.createElement('div');
+    col.className = 'export-day';
+
+    const header = document.createElement('div');
+    header.className = 'export-day-header';
+    header.textContent = dayName;
+    col.appendChild(header);
+
+    const dayWorkouts = currentTemplate.days[d];
+    const nonRest = dayWorkouts.filter(w => w.discipline !== 'rest');
+
+    if (nonRest.length === 0) {
+      const rest = document.createElement('div');
+      rest.className = 'export-day-rest';
+      rest.textContent = 'Rest';
+      col.appendChild(rest);
+    } else {
+      nonRest.forEach((workout, wIdx) => {
+        const entry = document.createElement('div');
+        entry.className = `export-workout-entry ${getDisciplineClass(workout.discipline)}`;
+
+        const label = document.createElement('div');
+        label.className = 'export-discipline';
+        label.textContent = getDisciplineLabel(workout.discipline);
+        entry.appendChild(label);
+
+        const timeInput = document.createElement('input');
+        timeInput.type = 'time';
+        timeInput.dataset.dayIdx = d;
+        timeInput.dataset.workoutIdx = wIdx;
+        const key = `${d}-${wIdx}`;
+        timeInput.value = saved[key] || '07:00';
+        entry.appendChild(timeInput);
+
+        col.appendChild(entry);
+      });
+    }
+
+    grid.appendChild(col);
+  });
+
+  document.getElementById('export-modal').classList.remove('hidden');
+}
+
+function closeExportModal() {
+  document.getElementById('export-modal').classList.add('hidden');
+}
+
+function toICSDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}${m}${d}T${h}${min}00`;
+}
+
+function generateICS(timeMap) {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SimpleTri//Training Plan//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:SimpleTri Training Plan',
+  ];
+
+  currentGroups.forEach((group) => {
+    if (group.template.isVacation) return;
+
+    const weekStart = new Date(group.template.weekStart);
+
+    for (let d = 0; d < 7; d++) {
+      const dayWorkouts = group.template.days[d];
+      let nonRestIdx = 0;
+
+      dayWorkouts.forEach((workout) => {
+        if (workout.discipline === 'rest') return;
+
+        const key = `${d}-${nonRestIdx}`;
+        const timeStr = timeMap[key] || '07:00';
+        const [hours, minutes] = timeStr.split(':').map(Number);
+
+        const eventDate = new Date(weekStart);
+        eventDate.setDate(eventDate.getDate() + d);
+        eventDate.setHours(hours, minutes, 0, 0);
+
+        const endDate = new Date(eventDate);
+        endDate.setMinutes(endDate.getMinutes() + (workout.duration || 30));
+
+        const summary = `${getDisciplineLabel(workout.discipline)} - ${workout.duration} min`;
+
+        let description = '';
+        if (workout.suggestion) {
+          description = workout.suggestion;
+        }
+        const zone = workout.intensity ? getZoneLabel(workout.intensity, workout.discipline) : '';
+        if (zone && zone !== 'full body') {
+          description = description ? `${zone}\\n${description}` : zone;
+        }
+        description = description.replace(/\n/g, '\\n');
+
+        const uid = `simpletri-w${group.startWeek}-d${d}-i${nonRestIdx}-${eventDate.getTime()}@simpletri`;
+
+        lines.push('BEGIN:VEVENT');
+        lines.push(`DTSTART:${toICSDate(eventDate)}`);
+        lines.push(`DTEND:${toICSDate(endDate)}`);
+        lines.push(`SUMMARY:${summary}`);
+        if (description) {
+          lines.push(`DESCRIPTION:${description}`);
+        }
+        lines.push(`UID:${uid}`);
+        lines.push(`DTSTAMP:${toICSDate(new Date())}`);
+        lines.push('END:VEVENT');
+
+        nonRestIdx++;
+      });
+    }
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+function downloadICS(icsString) {
+  const blob = new Blob([icsString], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'simpletri-plan.ics';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('export-btn').addEventListener('click', openExportModal);
+document.getElementById('export-cancel-btn').addEventListener('click', closeExportModal);
+document.getElementById('export-backdrop').addEventListener('click', closeExportModal);
+
+document.getElementById('export-download-btn').addEventListener('click', () => {
+  const inputs = document.querySelectorAll('#export-time-grid input[type="time"]');
+  const timeMap = {};
+  inputs.forEach(input => {
+    const key = `${input.dataset.dayIdx}-${input.dataset.workoutIdx}`;
+    timeMap[key] = input.value || '07:00';
+  });
+
+  localStorage.setItem('simpletri-export-times', JSON.stringify(timeMap));
+
+  const ics = generateICS(timeMap);
+  downloadICS(ics);
+  closeExportModal();
+});
+
 document.getElementById('delete-btn').addEventListener('click', () => {
   if (!confirm('Delete your plan and all saved data?')) return;
   localStorage.removeItem('simpletri-plan');
   localStorage.removeItem('simpletri-config');
   localStorage.removeItem('simpletri-template');
+  localStorage.removeItem('simpletri-export-times');
   currentTemplate = null;
   currentPlanConfig = null;
   currentVacations = [];

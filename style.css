@@ -1042,6 +1042,146 @@ body.is-dragging * {
   font-size: 0.65rem;
 }
 
+/* === Export Modal === */
+.export-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: introFadeIn 0.2s ease;
+}
+.export-modal.hidden {
+  display: none;
+}
+.export-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+.export-content {
+  position: relative;
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 900px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+}
+.export-content h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.export-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 1.25rem;
+}
+.export-time-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.export-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.export-day-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-align: center;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+.export-workout-entry {
+  border-radius: 6px;
+  padding: 0.5rem;
+  border-left: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.export-workout-entry .export-discipline {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.export-workout-entry input[type="time"] {
+  width: 100%;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text);
+}
+.export-workout-entry input[type="time"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.export-workout-entry.workout-run {
+  background: var(--run-bg);
+  border-left-color: var(--run-border);
+  color: var(--run-text);
+}
+.export-workout-entry.workout-bike {
+  background: var(--bike-bg);
+  border-left-color: var(--bike-border);
+  color: var(--bike-text);
+}
+.export-workout-entry.workout-swim {
+  background: var(--swim-bg);
+  border-left-color: var(--swim-border);
+  color: var(--swim-text);
+}
+.export-workout-entry.workout-strength {
+  background: var(--strength-bg);
+  border-left-color: var(--strength-border);
+  color: var(--strength-text);
+}
+.export-day-rest {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0.75rem 0.25rem;
+}
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 700px) {
+  .export-time-grid {
+    grid-template-columns: 1fr;
+  }
+  .export-day {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .export-day-header {
+    border-bottom: none;
+    min-width: 50px;
+  }
+  .export-workout-entry {
+    flex: 1;
+    min-width: 120px;
+  }
+}
+
 /* === Responsive === */
 @media (max-width: 900px) {
   body {
