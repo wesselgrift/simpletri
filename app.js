@@ -233,39 +233,88 @@ function getDisciplineClass(discipline) {
 
 // === Workout Suggestions ===
 
-function getWorkoutSuggestion(discipline, intensity, isLong, phase) {
+const WORKOUT_STRUCTURE = {
+  run: {
+    threshold: { warmup: 10, cooldown: 10, repLabel: '800m', repWork: 3.5, recoveryLabel: '400m recovery', recoveryTime: 1.5, zone: 'zone 4' },
+    interval:  { warmup: 10, cooldown: 10, repLabel: '400m', repWork: 1.5, recoveryLabel: '400m recovery', recoveryTime: 2.5, zone: 'zone 5' },
+  },
+  bike: {
+    threshold: { warmup: 15, cooldown: 10, repLabel: 'min', repWork: 10, recoveryLabel: '5 min recovery', recoveryTime: 5, zone: 'zone 4' },
+    interval:  { warmup: 15, cooldown: 10, repLabel: 'min', repWork: 3,  recoveryLabel: '3 min recovery', recoveryTime: 3, zone: 'zone 5' },
+  },
+  swim: {
+    threshold: { warmup: 8, cooldown: 4, warmupLabel: '400m warm-up', cooldownLabel: '200m cool-down', repLabel: '100m', repWork: 1.75, recoveryLabel: '15s recovery', recoveryTime: 0.25, zone: 'zone 4' },
+    interval:  { warmup: 8, cooldown: 4, warmupLabel: '400m warm-up', cooldownLabel: '200m cool-down', repLabel: '50m',  repWork: 0.75, recoveryLabel: '20s recovery', recoveryTime: 0.33, zone: 'zone 5' },
+  },
+};
+
+function buildStructuredSuggestion(discipline, intensity, duration) {
+  const s = WORKOUT_STRUCTURE[discipline]?.[intensity];
+  if (!s) return '';
+
+  let warmup = s.warmup;
+  let cooldown = s.cooldown;
+
+  // Scale down warm-up/cool-down for very short sessions
+  if (duration <= warmup + cooldown + s.repWork) {
+    warmup = Math.min(warmup, Math.floor(duration * 0.3));
+    cooldown = Math.min(cooldown, Math.floor(duration * 0.2));
+  }
+
+  const availableTime = duration - warmup - cooldown;
+  if (availableTime < s.repWork) {
+    const wuLabel = s.warmupLabel || `${warmup} min warm-up`;
+    const cdLabel = s.cooldownLabel || `${cooldown} min cool-down`;
+    return `${wuLabel}\nShort ${s.zone} effort\n${cdLabel}`;
+  }
+
+  const timePerSet = s.repWork + s.recoveryTime;
+  const reps = Math.max(1, Math.floor(availableTime / timePerSet));
+
+  const warmupLabel = s.warmupLabel || `${warmup} min warm-up`;
+  const cooldownLabel = s.cooldownLabel || `${cooldown} min cool-down`;
+
+  // Bike threshold: show sustained blocks with scaled duration
+  if (discipline === 'bike' && intensity === 'threshold') {
+    const totalRecovery = (reps - 1) * s.recoveryTime;
+    const workMins = Math.round((availableTime - totalRecovery) / reps);
+    if (reps === 1) {
+      return `${warmupLabel}\n${Math.round(availableTime)} min @ ${s.zone}\n${cooldownLabel}`;
+    }
+    return `${warmupLabel}\n${reps}x ${workMins} min @ ${s.zone}\n${s.recoveryLabel}\n${cooldownLabel}`;
+  }
+
+  // Bike interval: time-based reps
+  if (discipline === 'bike') {
+    return `${warmupLabel}\n${reps}x ${s.repWork} min @ ${s.zone}\n${s.recoveryLabel}\n${cooldownLabel}`;
+  }
+
+  // Run and swim: distance-based reps
+  return `${warmupLabel}\n${reps}x ${s.repLabel} @ ${s.zone}\n${s.recoveryLabel}\n${cooldownLabel}`;
+}
+
+function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration) {
   if (discipline === 'strength' || discipline === 'rest') return '';
 
   if (discipline === 'run') {
     if (isLong) return 'Long run @ zone 1-2';
     if (intensity === 'easy') return 'Steady run @ zone 1-2';
     if (intensity === 'tempo') return 'Steady run @ zone 3 (sweet spot)';
-    if (intensity === 'threshold') {
-      if (phase === 'taper') return '10 min warm-up\n3x 800m @ zone 4\n400m recovery\n10 min cool-down';
-      return '10 min warm-up\n4x 800m @ zone 4\n400m recovery\n10 min cool-down';
-    }
-    if (intensity === 'interval') return '10 min warm-up\n6x 400m @ zone 5\n400m recovery\n10 min cool-down';
   }
 
   if (discipline === 'bike') {
     if (isLong) return 'Long ride @ zone 1-2';
     if (intensity === 'easy') return 'Steady ride @ zone 1-2';
     if (intensity === 'tempo') return 'Steady ride @ zone 3 (sweet spot)';
-    if (intensity === 'threshold') {
-      if (phase === 'taper') return '15 min warm-up\n2x 10 min @ zone 4\n5 min recovery\nCool-down';
-      return '15 min warm-up\n2x 15 min @ zone 4\n5 min recovery\nCool-down';
-    }
-    if (intensity === 'interval') return '15 min warm-up\n5x 3 min @ zone 5\n3 min recovery\nCool-down';
   }
 
   if (discipline === 'swim') {
     if (intensity === 'easy') return 'Steady swim, focus on technique';
     if (intensity === 'tempo') return 'Steady swim @ zone 3, focus on pace';
-    if (intensity === 'threshold') {
-      if (phase === 'taper') return '400m warm-up\n6x 100m @ zone 4\n15s recovery\n200m cool-down';
-      return '400m warm-up\n8x 100m @ zone 4\n15s recovery\n200m cool-down';
-    }
-    if (intensity === 'interval') return '400m warm-up\n6x 50m @ zone 5\n20s recovery\n200m cool-down';
+  }
+
+  if (intensity === 'threshold' || intensity === 'interval') {
+    return buildStructuredSuggestion(discipline, intensity, duration || 40);
   }
 
   return '';
@@ -420,23 +469,25 @@ function generatePlan(config) {
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
       const isLong = i === runSessions - 1 && runSessions > 1;
       const intensity = getSessionIntensity(i, runSessions, polarized, isLong, phase, weeklyHours);
+      const runDur = isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration;
       workouts.push({
         discipline: 'run',
-        duration: isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration,
+        duration: runDur,
         intensity,
         isLong,
-        suggestion: getWorkoutSuggestion('run', intensity, isLong, phase),
+        suggestion: getWorkoutSuggestion('run', intensity, isLong, phase, runDur),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
       const isLong = i === bikeSessions - 1;
       const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase, weeklyHours);
+      const bikeDur = isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration;
       workouts.push({
         discipline: 'bike',
-        duration: isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration,
+        duration: bikeDur,
         intensity,
         isLong,
-        suggestion: getWorkoutSuggestion('bike', intensity, isLong, phase),
+        suggestion: getWorkoutSuggestion('bike', intensity, isLong, phase, bikeDur),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
@@ -445,7 +496,7 @@ function generatePlan(config) {
         discipline: 'swim',
         duration: swimDuration,
         intensity,
-        suggestion: getWorkoutSuggestion('swim', intensity, false, phase),
+        suggestion: getWorkoutSuggestion('swim', intensity, false, phase, swimDuration),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, strengthSessions - 1) : strengthSessions); i++) {
