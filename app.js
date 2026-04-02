@@ -198,13 +198,15 @@ const LONG_SESSION_MULTIPLIER = {
   full:    { run: 2.5, bike: 3.0 },
 };
 
+const MAX_LONG_DURATION = { run: 150, bike: 300 };
+
 // Taper length in weeks by race distance
 const TAPER_WEEKS = {
   sprint:  1,
   quarter: 1,
   olympic: 1,
-  half:    2,
-  full:    3,
+  half:    1,
+  full:    2,
 };
 
 // Brick run duration (minutes) by race distance
@@ -495,6 +497,16 @@ function generatePlan(config) {
     brickWeekSet.add(baseEndPre + Math.round(b * brickSpacing));
   }
 
+  // Pre-calculate "big block" weeks where long bike + long run combine on the same day
+  const TARGET_BIG_BLOCKS = Math.min(3, Math.max(2, Math.floor(brickEligibleCount * 0.2)));
+  const bigBlockSpacing = brickEligibleCount > 0 ? brickEligibleCount / TARGET_BIG_BLOCKS : 1;
+  const bigBlockWeekSet = new Set();
+  for (let b = 0; b < TARGET_BIG_BLOCKS; b++) {
+    const weekIdx = baseEndPre + Math.round(b * bigBlockSpacing);
+    bigBlockWeekSet.add(weekIdx);
+    brickWeekSet.add(weekIdx);
+  }
+
   const weeks = [];
   let trainingWeekIdx = 0;
 
@@ -527,9 +539,11 @@ function generatePlan(config) {
 
     // Volume multiplier
     let volumeMultiplier = 1;
-    if (isTaperWeek || isLastTrainingWeek) {
+    if (isLastTrainingWeek) {
+      volumeMultiplier = 0.4;
+    } else if (isTaperWeek) {
       const trainingWeeksUntilRace = totalTrainingWeeks - 1 - trainingWeekIdx;
-      volumeMultiplier = 0.55 + (trainingWeeksUntilRace / Math.max(1, taperLength)) * 0.25;
+      volumeMultiplier = 0.6 + (trainingWeeksUntilRace / Math.max(1, taperLength)) * 0.2;
     } else if (isRecoveryWeek) {
       volumeMultiplier = 0.75;
     }
@@ -566,11 +580,13 @@ function generatePlan(config) {
     if (effRunSessions > 0) {
       const hasLongRun = runSessions > 1;
       const regularRuns = hasLongRun ? effRunSessions - 1 : effRunSessions;
-      estimatedTotal += runDuration * regularRuns + (hasLongRun ? runDuration * longMult.run : 0);
+      const longRunEst = Math.min(MAX_LONG_DURATION.run, runDuration * longMult.run);
+      estimatedTotal += runDuration * regularRuns + (hasLongRun ? longRunEst : 0);
     }
     if (effBikeSessions > 0) {
       const regularBikes = effBikeSessions - 1;
-      estimatedTotal += bikeDuration * regularBikes + bikeDuration * longMult.bike;
+      const longBikeEst = Math.min(MAX_LONG_DURATION.bike, bikeDuration * longMult.bike);
+      estimatedTotal += bikeDuration * regularBikes + longBikeEst;
     }
 
     const targetMinutes = WEEKLY_HOURS_TARGET[weeklyHours] || 480;
@@ -590,9 +606,9 @@ function generatePlan(config) {
     // Build workout pool
     const workouts = [];
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
-      const isLong = i === runSessions - 1 && runSessions > 1;
+      const isLong = (i === runSessions - 1 && runSessions > 1) && !isLastTrainingWeek && !isTaperWeek;
       const intensity = getSessionIntensity(i, runSessions, polarized, isLong, phase, weeklyHours);
-      const runDur = isLong ? Math.round(runDuration * longMult.run / 5) * 5 : runDuration;
+      const runDur = isLong ? Math.min(MAX_LONG_DURATION.run, Math.round(runDuration * longMult.run / 5) * 5) : runDuration;
       workouts.push({
         discipline: 'run',
         duration: runDur,
@@ -602,9 +618,9 @@ function generatePlan(config) {
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
-      const isLong = i === bikeSessions - 1;
+      const isLong = (i === bikeSessions - 1) && !isLastTrainingWeek && !isTaperWeek;
       const intensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase, weeklyHours);
-      const bikeDur = isLong ? Math.round(bikeDuration * longMult.bike / 5) * 5 : bikeDuration;
+      const bikeDur = isLong ? Math.min(MAX_LONG_DURATION.bike, Math.round(bikeDuration * longMult.bike / 5) * 5) : bikeDuration;
       workouts.push({
         discipline: 'bike',
         duration: bikeDur,
@@ -653,10 +669,25 @@ function generatePlan(config) {
       daySlots[ri].push({ discipline: 'rest', duration: 0, intensity: 'rest' });
     });
 
-    // Place long workouts on long day
-    longWorkouts.forEach(w => {
-      daySlots[longDay].push(w);
-    });
+    // Determine second long day for long run (day before longDay, skipping rest)
+    let secondLongDay = (longDay + 6) % 7;
+    while (restDayIndices.includes(secondLongDay) && secondLongDay !== longDay) {
+      secondLongDay = (secondLongDay + 6) % 7;
+    }
+
+    // Place long workouts: bike always on longDay, run on separate day (unless big block week)
+    const isBigBlockWeek = bigBlockWeekSet.has(trainingWeekIdx);
+    const longBike = longWorkouts.find(w => w.discipline === 'bike');
+    const longRun = longWorkouts.find(w => w.discipline === 'run');
+
+    if (longBike) daySlots[longDay].push(longBike);
+    if (longRun) {
+      if (isBigBlockWeek) {
+        daySlots[longDay].push(longRun);
+      } else {
+        daySlots[secondLongDay].push(longRun);
+      }
+    }
 
     // Place brick run on long day after long bike
     if (brickWorkout) {
