@@ -894,6 +894,9 @@ header h1 {
   border-left-color: var(--rest-border);
   color: var(--rest-text);
 }
+.workout-brick {
+  border-left-style: dashed;
+}
 
 /* Progress indicator */
 .week-progress-wrap {

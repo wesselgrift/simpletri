@@ -207,6 +207,15 @@ const TAPER_WEEKS = {
   full:    3,
 };
 
+// Brick run duration (minutes) by race distance
+const BRICK_RUN_MINUTES = {
+  sprint:  10,
+  quarter: 15,
+  olympic: 15,
+  half:    20,
+  full:    25,
+};
+
 // Training phase splits (fraction of pre-taper weeks)
 const PHASE_SPLITS = {
   base:  0.40,
@@ -474,6 +483,18 @@ function generatePlan(config) {
   const bikeRange = getMinutesRange('bike', bikeLevel);
   const swimRange = getMinutesRange('swim', swimLevel);
 
+  // Pre-calculate which training weeks are brick-eligible (build/peak, non-recovery)
+  const taperLengthPre = TAPER_WEEKS[raceType] || 2;
+  const preTaperWeeksPre = totalTrainingWeeks - taperLengthPre;
+  const baseEndPre = Math.floor(preTaperWeeksPre * PHASE_SPLITS.base);
+  const brickEligibleCount = Math.max(0, totalTrainingWeeks - baseEndPre - taperLengthPre);
+  const TARGET_BRICKS = Math.min(6, Math.max(3, Math.round(brickEligibleCount * 0.4)));
+  const brickSpacing = brickEligibleCount > 0 ? brickEligibleCount / TARGET_BRICKS : 1;
+  const brickWeekSet = new Set();
+  for (let b = 0; b < TARGET_BRICKS; b++) {
+    brickWeekSet.add(baseEndPre + Math.round(b * brickSpacing));
+  }
+
   const weeks = [];
   let trainingWeekIdx = 0;
 
@@ -609,9 +630,23 @@ function generatePlan(config) {
       });
     }
 
+    // Add brick run on selected build/peak weeks
+    if (brickWeekSet.has(trainingWeekIdx) && !isRecoveryWeek && bikeSessions > 0) {
+      const brickDuration = BRICK_RUN_MINUTES[raceType] || 15;
+      workouts.push({
+        discipline: 'run',
+        duration: brickDuration,
+        intensity: 'easy',
+        isLong: false,
+        isBrick: true,
+        suggestion: 'Brick run off the bike @ zone 2',
+      });
+    }
+
     // Sort: long sessions to long day, spread others out
     const longWorkouts = workouts.filter(w => w.isLong);
-    const regularWorkouts = workouts.filter(w => !w.isLong);
+    const brickWorkout = workouts.find(w => w.isBrick);
+    const regularWorkouts = workouts.filter(w => !w.isLong && !w.isBrick);
 
     // Place rest on rest days
     restDayIndices.forEach(ri => {
@@ -622,6 +657,11 @@ function generatePlan(config) {
     longWorkouts.forEach(w => {
       daySlots[longDay].push(w);
     });
+
+    // Place brick run on long day after long bike
+    if (brickWorkout) {
+      daySlots[longDay].push(brickWorkout);
+    }
 
     // Available training days (excluding rest)
     const availableDays = [];
@@ -1447,6 +1487,7 @@ function generateTemplate(config) {
       discipline: w.discipline,
       intensity: w.intensity,
       isLong: w.isLong || false,
+      isBrick: w.isBrick || false,
     }))
   );
 
@@ -1624,6 +1665,7 @@ function updateVacationDuration(row, vacation) {
 function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   const block = document.createElement('div');
   block.className = `workout-block ${getDisciplineClass(workout.discipline)}`;
+  if (workout.isBrick) block.classList.add('workout-brick');
   block.dataset.groupIdx = groupIdx;
   block.dataset.dayIdx = dayIdx;
   block.dataset.workoutIdx = workoutIdx;
@@ -1635,7 +1677,7 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
 
   const typeEl = document.createElement('div');
   typeEl.className = 'workout-type';
-  typeEl.textContent = getDisciplineLabel(workout.discipline);
+  typeEl.textContent = workout.isBrick ? 'BRICK RUN' : getDisciplineLabel(workout.discipline);
   block.appendChild(typeEl);
 
   const detailEl = document.createElement('div');
@@ -1801,23 +1843,39 @@ function applyTemplateToFullPlan(template, config, vacations) {
           const pool = allWorkouts[discipline];
 
           if (pool && pool.length > 0) {
-            // Find best matching workout (prefer matching isLong/intensity)
-            let bestIdx = 0;
+            const wantBrick = templateWorkout.isBrick || false;
+            // Find best matching workout (never swap brick/non-brick)
+            let bestIdx = -1;
             for (let i = 0; i < pool.length; i++) {
+              if ((pool[i].isBrick || false) !== wantBrick) continue;
               if (pool[i].isLong === templateWorkout.isLong) {
                 bestIdx = i;
                 break;
               }
-              if (pool[i].intensity === templateWorkout.intensity) {
+              if (bestIdx === -1 || pool[i].intensity === templateWorkout.intensity) {
                 bestIdx = i;
               }
             }
+            if (bestIdx === -1) bestIdx = 0;
             const workout = pool.splice(bestIdx, 1)[0];
             week.days[d].push(workout);
           } else if (discipline === 'rest') {
             week.days[d].push({ discipline: 'rest', duration: 0, intensity: 'rest' });
           }
         });
+      }
+
+      // Place any remaining brick workouts on the day with the long bike
+      const leftoverBricks = Object.values(allWorkouts).flat().filter(w => w.isBrick);
+      if (leftoverBricks.length > 0) {
+        let bikeDay = parseInt(config.longDay || 5);
+        for (let dd = 0; dd < 7; dd++) {
+          if (week.days[dd].some(w => w.discipline === 'bike' && w.isLong)) {
+            bikeDay = dd;
+            break;
+          }
+        }
+        leftoverBricks.forEach(w => week.days[bikeDay].push(w));
       }
 
       // Fill empty days with rest (recovery/taper weeks may have fewer sessions than template)
