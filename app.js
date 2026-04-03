@@ -238,13 +238,16 @@ const SESSION_MIN_MINUTES = { run: 15, bike: 20, swim: 15 };
 
 // === Zone Labels ===
 
-function getZoneLabel(intensity, discipline) {
+function getZoneLabel(intensity, discipline, ftp) {
   if (discipline === 'strength') return 'full body';
-  if (intensity === 'easy') return 'zone 1-2';
-  if (intensity === 'tempo') return 'zone 3';
-  if (intensity === 'threshold') return 'zone 4';
-  if (intensity === 'interval') return 'zone 4-5';
-  return '';
+  const zone =
+    intensity === 'easy' ? 'zone 1-2' :
+    intensity === 'tempo' ? 'zone 3' :
+    intensity === 'threshold' ? 'zone 4' :
+    intensity === 'interval' ? 'zone 4-5' : '';
+  if (!zone) return '';
+  if (discipline === 'bike' && ftp) return zoneToWattage(zone, ftp);
+  return zone;
 }
 
 function getDisciplineLabel(discipline) {
@@ -260,6 +263,23 @@ function getDisciplineLabel(discipline) {
 
 function getDisciplineClass(discipline) {
   return `workout-${discipline}`;
+}
+
+// === Power Zones (% of FTP) ===
+
+const POWER_ZONES = {
+  'zone 1-2': { min: 0.40, max: 0.75 },
+  'zone 2':   { min: 0.56, max: 0.75 },
+  'zone 3':   { min: 0.76, max: 0.90 },
+  'zone 4':   { min: 0.91, max: 1.05 },
+  'zone 5':   { min: 1.06, max: 1.20 },
+  'zone 4-5': { min: 0.91, max: 1.20 },
+};
+
+function zoneToWattage(zoneLabel, ftp) {
+  if (!ftp || !POWER_ZONES[zoneLabel]) return zoneLabel;
+  const r = POWER_ZONES[zoneLabel];
+  return `${Math.round(ftp * r.min)}-${Math.round(ftp * r.max)}W`;
 }
 
 // === Workout Suggestions ===
@@ -311,7 +331,7 @@ function swimDistanceLabel(minutes) {
   return `${meters}m`;
 }
 
-function buildStructuredSuggestion(discipline, intensity, duration) {
+function buildStructuredSuggestion(discipline, intensity, duration, ftp) {
   const env = WORKOUT_ENVELOPE[discipline]?.[intensity];
   const tiers = WORKOUT_STRUCTURE[discipline]?.[intensity];
   if (!env || !tiers) return '';
@@ -330,7 +350,8 @@ function buildStructuredSuggestion(discipline, intensity, duration) {
   if (availableTime < firstTier.repWork) {
     const wuLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
     const cdLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
-    return `${wuLabel}\nShort ${env.zone} effort\n${cdLabel}`;
+    const shortZone = (discipline === 'bike' && ftp) ? zoneToWattage(env.zone, ftp) : env.zone;
+    return `${wuLabel}\nShort ${shortZone} effort\n${cdLabel}`;
   }
 
   // Find the right tier: use the first where reps fit within maxReps
@@ -361,6 +382,7 @@ function buildStructuredSuggestion(discipline, intensity, duration) {
   // Build labels
   const warmupLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
   const cooldownLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
+  const zoneLabel = (discipline === 'bike' && ftp) ? zoneToWattage(env.zone, ftp) : env.zone;
 
   // Bike threshold: show sustained blocks with dynamically scaled duration
   if (discipline === 'bike' && intensity === 'threshold') {
@@ -368,21 +390,21 @@ function buildStructuredSuggestion(discipline, intensity, duration) {
     const totalRecovery = (reps - 1) * chosenTier.recoveryTime;
     const workMins = Math.round((workAvailable - totalRecovery) / reps);
     if (reps === 1) {
-      return `${warmupLabel}\n${Math.round(workAvailable)} min @ ${env.zone}\n${cooldownLabel}`;
+      return `${warmupLabel}\n${Math.round(workAvailable)} min @ ${zoneLabel}\n${cooldownLabel}`;
     }
-    return `${warmupLabel}\n${reps}x ${workMins} min @ ${env.zone}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
+    return `${warmupLabel}\n${reps}x ${workMins} min @ ${zoneLabel}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
   }
 
   // Bike interval: time-based reps
   if (discipline === 'bike') {
-    return `${warmupLabel}\n${reps}x ${chosenTier.repWork} min @ ${env.zone}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
+    return `${warmupLabel}\n${reps}x ${chosenTier.repWork} min @ ${zoneLabel}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
   }
 
   // Run and swim: distance-based reps
-  return `${warmupLabel}\n${reps}x ${chosenTier.repLabel} @ ${env.zone}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
+  return `${warmupLabel}\n${reps}x ${chosenTier.repLabel} @ ${zoneLabel}\n${chosenTier.recoveryLabel}\n${cooldownLabel}`;
 }
 
-function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration) {
+function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration, ftp) {
   if (discipline === 'strength' || discipline === 'rest') return '';
 
   if (discipline === 'run') {
@@ -392,9 +414,9 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration) {
   }
 
   if (discipline === 'bike') {
-    if (isLong) return 'Long ride @ zone 1-2';
-    if (intensity === 'easy') return 'Steady ride @ zone 1-2';
-    if (intensity === 'tempo') return 'Steady ride @ zone 3 (sweet spot)';
+    if (isLong) return ftp ? `Long ride @ ${zoneToWattage('zone 2', ftp)}` : 'Long ride @ zone 2';
+    if (intensity === 'easy') return ftp ? `Steady ride @ ${zoneToWattage('zone 1-2', ftp)}` : 'Steady ride @ zone 1-2';
+    if (intensity === 'tempo') return ftp ? `Steady ride @ ${zoneToWattage('zone 3', ftp)}` : 'Steady ride @ zone 3 (sweet spot)';
   }
 
   if (discipline === 'swim') {
@@ -403,7 +425,7 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration) {
   }
 
   if (intensity === 'threshold' || intensity === 'interval') {
-    return buildStructuredSuggestion(discipline, intensity, duration || 40);
+    return buildStructuredSuggestion(discipline, intensity, duration || 40, ftp);
   }
 
   return '';
@@ -457,6 +479,10 @@ function generatePlan(config) {
     weeklyHours,
     vacationWeekIndices = new Set()
   } = config;
+
+  const bikeFtp = (config.showWattage && config.bikeBenchmarkType === 'ftp')
+    ? parseFloat(config.bikeBenchmarkValue) || null
+    : null;
 
   const start = new Date(planStart);
   const end = new Date(raceDate);
@@ -626,7 +652,7 @@ function generatePlan(config) {
         duration: bikeDur,
         intensity,
         isLong,
-        suggestion: getWorkoutSuggestion('bike', intensity, isLong, phase, bikeDur),
+        suggestion: getWorkoutSuggestion('bike', intensity, isLong, phase, bikeDur, bikeFtp),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
@@ -1439,6 +1465,7 @@ function getConfig() {
     restDays: parseInt(document.getElementById('rest-days').value) || 0,
     polarized: document.getElementById('polarized').checked,
     recoveryWeeks: document.getElementById('recovery-weeks').checked,
+    showWattage: document.getElementById('show-wattage').checked,
     longDay: parseInt(document.getElementById('long-day').value),
   };
 }
@@ -1726,10 +1753,15 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   block.appendChild(detailEl);
 
   if (!isTemplate && workout.discipline !== 'rest' && workout.discipline !== 'strength') {
-    const zoneEl = document.createElement('div');
-    zoneEl.className = 'workout-zone';
-    zoneEl.textContent = getZoneLabel(workout.intensity, workout.discipline);
-    block.appendChild(zoneEl);
+    const ftp = (currentPlanConfig?.showWattage && currentPlanConfig?.bikeBenchmarkType === 'ftp')
+      ? parseFloat(currentPlanConfig.bikeBenchmarkValue) || null : null;
+    const skipZoneBadge = workout.discipline === 'bike' && ftp && workout.suggestion;
+    if (!skipZoneBadge) {
+      const zoneEl = document.createElement('div');
+      zoneEl.className = 'workout-zone';
+      zoneEl.textContent = getZoneLabel(workout.intensity, workout.discipline, workout.discipline === 'bike' ? ftp : null);
+      block.appendChild(zoneEl);
+    }
   }
 
   if (!isTemplate && workout.suggestion) {
@@ -2188,7 +2220,9 @@ function generateICS(timeMap) {
         if (workout.suggestion) {
           description = workout.suggestion;
         }
-        const zone = workout.intensity ? getZoneLabel(workout.intensity, workout.discipline) : '';
+        const exportFtp = (currentPlanConfig?.showWattage && currentPlanConfig?.bikeBenchmarkType === 'ftp')
+          ? parseFloat(currentPlanConfig.bikeBenchmarkValue) || null : null;
+        const zone = workout.intensity ? getZoneLabel(workout.intensity, workout.discipline, workout.discipline === 'bike' ? exportFtp : null) : '';
         if (zone && zone !== 'full body') {
           description = description ? `${zone}\\n${description}` : zone;
         }
@@ -2332,6 +2366,7 @@ function restoreConfig(config) {
   if (config.restDays != null) document.getElementById('rest-days').value = config.restDays;
   if (config.polarized != null) document.getElementById('polarized').checked = config.polarized;
   if (config.recoveryWeeks != null) document.getElementById('recovery-weeks').checked = config.recoveryWeeks;
+  if (config.showWattage != null) document.getElementById('show-wattage').checked = config.showWattage;
   if (config.longDay != null) document.getElementById('long-day').value = config.longDay;
 
   const hasBenchmarks = config.runBenchmarkTime || config.bikeBenchmarkValue || config.swimBenchmarkTime;
