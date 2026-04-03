@@ -289,7 +289,9 @@ const WORKOUT_ENVELOPE = {
           interval:  { warmup: 10, cooldown: 10, zone: 'zone 5' } },
   bike: { threshold: { warmup: 15, cooldown: 10, zone: 'zone 4' },
           interval:  { warmup: 15, cooldown: 10, zone: 'zone 5' } },
-  swim: { threshold: { warmup: 8, cooldown: 4, zone: 'zone 4' },
+  swim: { easy:      { warmup: 8, cooldown: 4, zone: 'zone 2' },
+          tempo:     { warmup: 8, cooldown: 4, zone: 'zone 3' },
+          threshold: { warmup: 8, cooldown: 4, zone: 'zone 4' },
           interval:  { warmup: 8, cooldown: 4, zone: 'zone 5' } },
 };
 
@@ -315,6 +317,14 @@ const WORKOUT_STRUCTURE = {
     ],
   },
   swim: {
+    easy: [
+      { repLabel: '200m', repWork: 3.5, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 4 },
+      { repLabel: '400m', repWork: 7.0, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 5 },
+    ],
+    tempo: [
+      { repLabel: '200m', repWork: 3.5, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 5 },
+      { repLabel: '300m', repWork: 5.25, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 6 },
+    ],
     threshold: [
       { repLabel: '100m', repWork: 1.75, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 10 },
       { repLabel: '200m', repWork: 3.5,  recoveryLabel: '20s recovery', recoveryTime: 0.33, maxReps: 6 },
@@ -348,7 +358,7 @@ function buildStructuredSuggestion(discipline, intensity, duration, ftp) {
 
   let availableTime = duration - warmup - cooldown;
   if (availableTime < firstTier.repWork) {
-    const wuLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
+    const wuLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up${intensity === 'easy' ? ' (drills)' : ''}` : `${warmup} min warm-up`;
     const cdLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
     const shortZone = (discipline === 'bike' && ftp) ? zoneToWattage(env.zone, ftp) : env.zone;
     return `${wuLabel}\nShort ${shortZone} effort\n${cdLabel}`;
@@ -380,7 +390,7 @@ function buildStructuredSuggestion(discipline, intensity, duration, ftp) {
   cooldown = Math.round(cooldown / 5) * 5;
 
   // Build labels
-  const warmupLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up` : `${warmup} min warm-up`;
+  const warmupLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up${intensity === 'easy' ? ' (drills)' : ''}` : `${warmup} min warm-up`;
   const cooldownLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
   const zoneLabel = (discipline === 'bike' && ftp) ? zoneToWattage(env.zone, ftp) : env.zone;
 
@@ -420,8 +430,7 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration, ft
   }
 
   if (discipline === 'swim') {
-    if (intensity === 'easy') return 'Steady swim, focus on technique';
-    if (intensity === 'tempo') return 'Steady swim @ zone 3, focus on pace';
+    return buildStructuredSuggestion(discipline, intensity, duration || 40, ftp);
   }
 
   if (intensity === 'threshold' || intensity === 'interval') {
