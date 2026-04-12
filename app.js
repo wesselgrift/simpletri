@@ -437,6 +437,22 @@ const TAPER_WEEKS = {
   full:    2,
 };
 
+const RACE_WEEK_SESSION_CAPS = {
+  sprint:  { run: 1, bike: 1, swim: 1, strength: 0 },
+  quarter: { run: 1, bike: 1, swim: 1, strength: 0 },
+  olympic: { run: 1, bike: 1, swim: 1, strength: 0 },
+  half:    { run: 2, bike: 2, swim: 1, strength: 0 },
+  full:    { run: 2, bike: 2, swim: 1, strength: 0 },
+};
+
+const RACE_EVENT_DURATION_MINUTES = {
+  sprint: 90,
+  quarter: 150,
+  olympic: 180,
+  half: 360,
+  full: 720,
+};
+
 // Brick run duration (minutes) by race distance
 const BRICK_RUN_MINUTES = {
   sprint:  10,
@@ -1491,18 +1507,91 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration, ft
 
 // === Vacation Helpers ===
 
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function alignDateToMonday(date) {
+  const aligned = new Date(date);
+  aligned.setHours(0, 0, 0, 0);
+  const dayOfWeek = aligned.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  aligned.setDate(aligned.getDate() + mondayOffset);
+  return aligned;
+}
+
+function getRaceWeekContext(planStart, raceDate) {
+  const start = alignDateToMonday(new Date(planStart));
+  const race = new Date(raceDate);
+  race.setHours(0, 0, 0, 0);
+  const totalDays = Math.max(0, Math.floor((race - start) / MS_PER_DAY));
+  const raceWeekIdx = Math.floor(totalDays / 7);
+  const totalWeeks = Math.max(1, raceWeekIdx + 1);
+  const raceDow = race.getDay();
+  const raceDayIdx = raceDow === 0 ? 6 : raceDow - 1;
+  return {
+    start,
+    raceDate: race,
+    totalDays,
+    totalWeeks,
+    raceWeekIdx,
+    raceDayIdx,
+  };
+}
+
+function buildRestWorkout() {
+  return { discipline: 'rest', duration: 0, intensity: 'rest' };
+}
+
+function countPlannedSessions(days) {
+  return days.flat().filter(workout => workout.discipline !== 'rest' && !workout.isRace).length;
+}
+
+function buildRaceWorkout(raceType) {
+  const distances = RACE_DISTANCES[raceType] || RACE_DISTANCES.olympic;
+  return {
+    discipline: 'race',
+    intensity: 'race',
+    duration: RACE_EVENT_DURATION_MINUTES[raceType] || 180,
+    isRace: true,
+    raceType,
+    raceLabel: RACE_LABELS[raceType] || raceType,
+    raceDistances: distances,
+  };
+}
+
+function finalizeRaceWeekLayout(week) {
+  if (!week?.isRaceWeek) return;
+  for (let d = 0; d < 7; d++) {
+    const existing = Array.isArray(week.days[d]) ? week.days[d].filter(workout => !workout.isRace) : [];
+    if (d === week.raceDayIdx) {
+      week.days[d] = [buildRaceWorkout(week.raceType)];
+      continue;
+    }
+    if (d > week.raceDayIdx) {
+      week.days[d] = [buildRestWorkout()];
+      continue;
+    }
+    week.days[d] = existing;
+  }
+  week.totalSessions = countPlannedSessions(week.days);
+}
+
+function getRaceWeekSessionTargets(raceType, requestedSessions, raceDayIdx) {
+  if (raceDayIdx <= 0) {
+    return { run: 0, bike: 0, swim: 0, strength: 0 };
+  }
+  const caps = RACE_WEEK_SESSION_CAPS[raceType] || RACE_WEEK_SESSION_CAPS.olympic;
+  return {
+    run: Math.max(0, Math.min(Number(requestedSessions.run) || 0, caps.run)),
+    bike: Math.max(0, Math.min(Number(requestedSessions.bike) || 0, caps.bike)),
+    swim: Math.max(0, Math.min(Number(requestedSessions.swim) || 0, caps.swim)),
+    strength: Math.max(0, Math.min(Number(requestedSessions.strength) || 0, caps.strength)),
+  };
+}
+
 function getVacationWeekIndices(vacations, planStart, raceDate) {
   if (!vacations || vacations.length === 0) return new Set();
 
-  const start = new Date(planStart);
-  const end = new Date(raceDate);
-
-  const dayOfWeek = start.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  start.setDate(start.getDate() + mondayOffset);
-
-  const totalDays = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-  const totalWeeks = Math.max(1, Math.floor(totalDays / 7));
+  const { start, totalWeeks } = getRaceWeekContext(planStart, raceDate);
 
   const indices = new Set();
   for (const vacation of vacations) {
@@ -1542,19 +1631,19 @@ function generatePlan(config) {
     ? parseFloat(config.bikeBenchmarkValue) || null
     : null;
 
-  const start = new Date(planStart);
-  const end = new Date(raceDate);
-
-  // Align start to Monday
-  const dayOfWeek = start.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  start.setDate(start.getDate() + mondayOffset);
-
-  const totalDays = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-  const totalWeeks = Math.max(1, Math.floor(totalDays / 7));
-
-  const vacationCount = [...vacationWeekIndices].filter(i => i < totalWeeks).length;
-  const totalTrainingWeeks = totalWeeks - vacationCount;
+  const raceWeekContext = getRaceWeekContext(planStart, raceDate);
+  const start = raceWeekContext.start;
+  const totalWeeks = raceWeekContext.totalWeeks;
+  const raceWeekIdx = raceWeekContext.raceWeekIdx;
+  const raceDayIdx = raceWeekContext.raceDayIdx;
+  const effectiveVacationWeekIndices = new Set(
+    [...vacationWeekIndices].filter(idx => idx < totalWeeks && idx !== raceWeekIdx)
+  );
+  const raceWeekHasTrainingDays = raceDayIdx > 0;
+  const totalTrainingWeeks = Array.from({ length: totalWeeks }, (_, weekIdx) => weekIdx)
+    .filter(weekIdx => !effectiveVacationWeekIndices.has(weekIdx))
+    .filter(weekIdx => weekIdx !== raceWeekIdx || raceWeekHasTrainingDays)
+    .length;
 
   const capacities = getCapacitiesFromConfig(config);
   const fitnessLevels = {
@@ -1621,23 +1710,38 @@ function generatePlan(config) {
   for (let w = 0; w < totalWeeks; w++) {
     const weekStart = new Date(start);
     weekStart.setDate(weekStart.getDate() + w * 7);
+    const isRaceWeek = w === raceWeekIdx;
+    const isTrainableRaceWeek = !isRaceWeek || raceDayIdx > 0;
 
-    if (vacationWeekIndices.has(w)) {
+    if (effectiveVacationWeekIndices.has(w)) {
       weeks.push({
         weekNumber: w + 1,
         weekStart,
         isVacation: true,
+        isRaceWeek: false,
         isRecovery: false,
         isTaper: false,
         phase: 'vacation',
-        days: Array.from({ length: 7 }, () => [{ discipline: 'rest', duration: 0, intensity: 'rest' }]),
+        days: Array.from({ length: 7 }, () => [buildRestWorkout()]),
         totalSessions: 0,
       });
       continue;
     }
 
     const taperLength = TAPER_WEEKS[raceType] || 2;
-    const trainingWeekNumber = trainingWeekIdx + 1;
+    const raceWeekSessions = isRaceWeek
+      ? getRaceWeekSessionTargets(raceType, {
+        run: runSessions,
+        bike: bikeSessions,
+        swim: swimSessions,
+        strength: strengthSessions,
+      }, raceDayIdx)
+      : null;
+    const weekRunSessions = raceWeekSessions ? raceWeekSessions.run : runSessions;
+    const weekBikeSessions = raceWeekSessions ? raceWeekSessions.bike : bikeSessions;
+    const weekSwimSessions = raceWeekSessions ? raceWeekSessions.swim : swimSessions;
+    const weekStrengthSessions = raceWeekSessions ? raceWeekSessions.strength : strengthSessions;
+    const trainingWeekNumber = Math.max(1, Math.min(totalTrainingWeeks || 1, trainingWeekIdx + 1));
     const weeklyRiskLevel = getRiskLevelForTrainingWeek(
       riskLevel,
       riskAssessment,
@@ -1645,9 +1749,14 @@ function generatePlan(config) {
       totalTrainingWeeks
     );
     const effectiveRecoveryWeeks = recoveryWeeks || weeklyRiskLevel === 'high';
-    const isLastTrainingWeek = trainingWeekIdx === totalTrainingWeeks - 1;
-    const isTaperWeek = trainingWeekIdx >= totalTrainingWeeks - taperLength && totalTrainingWeeks > taperLength + 2;
-    const isRecoveryWeek = effectiveRecoveryWeeks && ((trainingWeekIdx + 1) % 4 === 0) && !isTaperWeek && !isLastTrainingWeek;
+    const isLastTrainingWeek = isTrainableRaceWeek && trainingWeekIdx === totalTrainingWeeks - 1;
+    const isTaperWeek = isTrainableRaceWeek && trainingWeekIdx >= totalTrainingWeeks - taperLength && totalTrainingWeeks > taperLength + 2;
+    const isRecoveryWeek =
+      effectiveRecoveryWeeks &&
+      ((trainingWeekIdx + 1) % 4 === 0) &&
+      !isRaceWeek &&
+      !isTaperWeek &&
+      !isLastTrainingWeek;
 
     // Progress factor based on training weeks only
     const peakWeek = Math.max(0, totalTrainingWeeks - taperLength - 1);
@@ -1667,7 +1776,7 @@ function generatePlan(config) {
     // Determine training phase based on training weeks
     const preTaperWeeks = totalTrainingWeeks - taperLength;
     let phase = 'base';
-    if (isTaperWeek || isLastTrainingWeek) {
+    if (isRaceWeek || isTaperWeek || isLastTrainingWeek) {
       phase = 'taper';
     } else {
       const baseEnd = Math.floor(preTaperWeeks * PHASE_SPLITS.base);
@@ -1685,9 +1794,9 @@ function generatePlan(config) {
     let runDuration = sessionDuration(runRange);
     let bikeDuration = sessionDuration(bikeRange);
     let swimDuration = sessionDuration(swimRange);
-    const effRunSessions = isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions;
-    const effBikeSessions = isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions;
-    const effSwimSessions = isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions;
+    const effRunSessions = isRecoveryWeek ? Math.max(1, weekRunSessions - 1) : weekRunSessions;
+    const effBikeSessions = isRecoveryWeek ? Math.max(1, weekBikeSessions - 1) : weekBikeSessions;
+    const effSwimSessions = isRecoveryWeek ? Math.max(1, weekSwimSessions - 1) : weekSwimSessions;
     const sessionCounts = { run: effRunSessions, bike: effBikeSessions, swim: effSwimSessions };
     const progressionStage = getProgressionStage(trainingWeekNumber, weeklyRiskLevel);
 
@@ -1736,7 +1845,7 @@ function generatePlan(config) {
       if (applyRecoveryReduction) {
         const recoveryReduction = getSingleSessionRecoveryReduction(
           discipline,
-          discipline === 'run' ? runSessions : discipline === 'bike' ? bikeSessions : swimSessions,
+          discipline === 'run' ? weekRunSessions : discipline === 'bike' ? weekBikeSessions : weekSwimSessions,
           sessionCounts[discipline],
           isRecoveryWeek
         );
@@ -1772,9 +1881,9 @@ function generatePlan(config) {
     swimDuration = capRegularDuration('swim', swimDuration, { applyRecoveryReduction: false });
 
     const keySessionByDiscipline = {
-      run: hasKeyEnduranceSessionForWeek('run', runSessions, phase, isRecoveryWeek, isTaperWeek, isLastTrainingWeek),
-      bike: hasKeyEnduranceSessionForWeek('bike', bikeSessions, phase, isRecoveryWeek, isTaperWeek, isLastTrainingWeek),
-      swim: hasKeyEnduranceSessionForWeek('swim', swimSessions, phase, isRecoveryWeek, isTaperWeek, isLastTrainingWeek),
+      run: !isRaceWeek && hasKeyEnduranceSessionForWeek('run', weekRunSessions, phase, isRecoveryWeek, isTaperWeek, isLastTrainingWeek),
+      bike: !isRaceWeek && hasKeyEnduranceSessionForWeek('bike', weekBikeSessions, phase, isRecoveryWeek, isTaperWeek, isLastTrainingWeek),
+      swim: !isRaceWeek && hasKeyEnduranceSessionForWeek('swim', weekSwimSessions, phase, isRecoveryWeek, isTaperWeek, isLastTrainingWeek),
     };
 
     let estimatedTotal = 0;
@@ -1800,7 +1909,7 @@ function generatePlan(config) {
       estimatedTotal += bikeDuration * regularBikes + keyBikeEst;
     }
 
-    const targetMinutes = getEffectiveEnduranceBudget(weeklyHours, strengthSessions, phase);
+    const targetMinutes = getEffectiveEnduranceBudget(weeklyHours, weekStrengthSessions, phase);
     const effectiveStableWeeksByDiscipline =
       prevWeekWasRecovery && !isRecoveryWeek
         ? lastNonRecoveryStableWeeksByDiscipline
@@ -1937,15 +2046,17 @@ function generatePlan(config) {
     const daySlots = new Array(7).fill(null).map(() => []);
 
     // Assign rest days first
-    const restDayIndices = getRestDayIndices(restDays, longDay);
+    const raceWeekTrainingWindowEnd = isRaceWeek ? raceDayIdx : 7;
+    const restDayIndices = getRestDayIndices(restDays, longDay)
+      .filter(dayIdx => dayIdx < raceWeekTrainingWindowEnd);
 
     // Build workout pool
     const workouts = [];
     const weekThresholdHits = { run: false, bike: false, swim: false };
-    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
-      const totalRunSessions = isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions;
+    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, weekRunSessions - 1) : weekRunSessions); i++) {
+      const totalRunSessions = isRecoveryWeek ? Math.max(1, weekRunSessions - 1) : weekRunSessions;
       const isLong = isKeySessionIndex(i, totalRunSessions, keySessionByDiscipline.run);
-      const proposedIntensity = getSessionIntensity(i, runSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber);
+      const proposedIntensity = getSessionIntensity(i, weekRunSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber);
       const intensity = gateIntensity(proposedIntensity, 'run', {
         readinessTier,
         phase,
@@ -1970,10 +2081,10 @@ function generatePlan(config) {
         suggestion: getWorkoutSuggestion('run', intensity, isLong, phase, runDur, null, { readinessTier }),
       });
     }
-    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
-      const totalBikeSessions = isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions;
+    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, weekBikeSessions - 1) : weekBikeSessions); i++) {
+      const totalBikeSessions = isRecoveryWeek ? Math.max(1, weekBikeSessions - 1) : weekBikeSessions;
       const isLong = isKeySessionIndex(i, totalBikeSessions, keySessionByDiscipline.bike);
-      const proposedIntensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber);
+      const proposedIntensity = getSessionIntensity(i, weekBikeSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber);
       const intensity = gateIntensity(proposedIntensity, 'bike', {
         readinessTier,
         phase,
@@ -1998,10 +2109,10 @@ function generatePlan(config) {
         suggestion: getWorkoutSuggestion('bike', intensity, isLong, phase, bikeDur, bikeFtp, { readinessTier }),
       });
     }
-    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
-      const totalSwimSessions = isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions;
+    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, weekSwimSessions - 1) : weekSwimSessions); i++) {
+      const totalSwimSessions = isRecoveryWeek ? Math.max(1, weekSwimSessions - 1) : weekSwimSessions;
       const isLongSwim = isKeySessionIndex(i, totalSwimSessions, keySessionByDiscipline.swim);
-      const proposedIntensity = getSessionIntensity(i, swimSessions, polarized, isLongSwim, phase, weeklyHours, trainingWeekNumber);
+      const proposedIntensity = getSessionIntensity(i, weekSwimSessions, polarized, isLongSwim, phase, weeklyHours, trainingWeekNumber);
       const intensity = gateIntensity(proposedIntensity, 'swim', {
         readinessTier,
         phase,
@@ -2026,7 +2137,7 @@ function generatePlan(config) {
         suggestion: getWorkoutSuggestion('swim', intensity, isLongSwim, phase, swimDur, null, { readinessTier }),
       });
     }
-    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, strengthSessions - 1) : strengthSessions); i++) {
+    for (let i = 0; i < (isRecoveryWeek ? Math.max(1, weekStrengthSessions - 1) : weekStrengthSessions); i++) {
       workouts.push({
         discipline: 'strength',
         duration: 60,
@@ -2035,7 +2146,7 @@ function generatePlan(config) {
     }
 
     // Add brick run on selected build/peak weeks
-    if (brickWeekSet.has(trainingWeekIdx) && !isRecoveryWeek && bikeSessions > 0) {
+    if (brickWeekSet.has(trainingWeekIdx) && !isRecoveryWeek && !isRaceWeek && weekBikeSessions > 0) {
       const brickDuration = BRICK_RUN_MINUTES[raceType] || 15;
       workouts.push({
         discipline: 'run',
@@ -2085,7 +2196,7 @@ function generatePlan(config) {
     // Available training days (excluding rest)
     const availableDays = [];
     for (let d = 0; d < 7; d++) {
-      if (!restDayIndices.includes(d)) {
+      if (d < raceWeekTrainingWindowEnd && !restDayIndices.includes(d)) {
         availableDays.push(d);
       }
     }
@@ -2178,27 +2289,41 @@ function generatePlan(config) {
     if (isRecoveryWeek) {
       for (let d = 0; d < 7; d++) {
         if (daySlots[d].length === 0) {
-          daySlots[d].push({ discipline: 'rest', duration: 0, intensity: 'rest' });
+          daySlots[d].push(buildRestWorkout());
         }
       }
     }
 
-    // Calculate total sessions (non-rest)
-    const totalSessions = daySlots.flat().filter(w => w.discipline !== 'rest').length;
+    if (isRaceWeek) {
+      daySlots[raceDayIdx].push(buildRaceWorkout(raceType));
+    }
 
-    weeks.push({
+    for (let d = 0; d < 7; d++) {
+      if (daySlots[d].length === 0 && isRaceWeek && d > raceDayIdx) {
+        daySlots[d].push(buildRestWorkout());
+      }
+    }
+
+    const totalSessions = countPlannedSessions(daySlots);
+
+    const week = {
       weekNumber: w + 1,
       weekStart,
       isVacation: false,
+      isRaceWeek,
+      raceDayIdx: isRaceWeek ? raceDayIdx : null,
+      raceType: isRaceWeek ? raceType : null,
       isRecovery: isRecoveryWeek,
-      isTaper: isTaperWeek || isLastTrainingWeek,
+      isTaper: isRaceWeek || isTaperWeek || isLastTrainingWeek,
       phase,
       days: daySlots,
       totalSessions,
       readinessTier,
       riskLevel: weeklyRiskLevel,
       progressionStage,
-    });
+    };
+    finalizeRaceWeekLayout(week);
+    weeks.push(week);
 
     const longRunWorkout = workouts.find(work => work.discipline === 'run' && work.isLong);
     const longBikeWorkout = workouts.find(work => work.discipline === 'bike' && work.isLong);
@@ -2211,7 +2336,7 @@ function generatePlan(config) {
       longBike: longBikeWorkout ? longBikeWorkout.duration : bikeDuration,
       longSwim: longSwimWorkout ? longSwimWorkout.duration : swimDuration,
     };
-    if (!isRecoveryWeek) {
+    if (!isRecoveryWeek && !isRaceWeek) {
       lastNonRecoveryDurations = prevWeekDurations;
     }
 
@@ -2228,18 +2353,20 @@ function generatePlan(config) {
       swim: swimDuration >= noviceDurabilityThresholds.swim,
     };
     ['run', 'bike', 'swim'].forEach(discipline => {
-      if (!isRecoveryWeek && durableByDiscipline[discipline]) {
+      if (!isRecoveryWeek && !isRaceWeek && durableByDiscipline[discipline]) {
         stableWeeksByDiscipline[discipline] += 1;
       } else {
         stableWeeksByDiscipline[discipline] = 0;
       }
     });
-    if (!isRecoveryWeek) {
+    if (!isRecoveryWeek && !isRaceWeek) {
       lastNonRecoveryStableWeeksByDiscipline = { ...stableWeeksByDiscipline };
     }
     prevWeekWasRecovery = isRecoveryWeek;
 
-    trainingWeekIdx++;
+    if (isTrainableRaceWeek) {
+      trainingWeekIdx++;
+    }
   }
 
   const grouped = groupWeeks(weeks);
@@ -2462,71 +2589,6 @@ function renderPlan(groups) {
     grid.appendChild(row);
   });
 
-  // Race day row
-  if (currentPlanConfig) {
-    const raceDate = new Date(currentPlanConfig.raceDate);
-    const raceDow = raceDate.getDay();
-    const raceDayIdx = raceDow === 0 ? 6 : raceDow - 1;
-    const raceType = currentPlanConfig.raceType;
-    const dist = RACE_DISTANCES[raceType] || RACE_DISTANCES.olympic;
-    const raceLabel = RACE_LABELS[raceType] || raceType;
-
-    const raceRow = document.createElement('div');
-    raceRow.className = 'week-row race-row';
-
-    const raceWeekLabel = document.createElement('div');
-    raceWeekLabel.className = 'week-label race-week-label';
-
-    const raceName = document.createElement('div');
-    raceName.className = 'week-name';
-    raceName.textContent = 'Race Day';
-    raceWeekLabel.appendChild(raceName);
-
-    const raceDateEl = document.createElement('div');
-    raceDateEl.className = 'week-date';
-    const rd = raceDate;
-    raceDateEl.textContent = `${rd.getDate()} ${MONTH_SHORT[rd.getMonth()]}`;
-    raceWeekLabel.appendChild(raceDateEl);
-
-    const raceBadge = document.createElement('div');
-    raceBadge.className = 'race-badge';
-    raceBadge.textContent = raceLabel.toUpperCase();
-    raceWeekLabel.appendChild(raceBadge);
-
-    raceRow.appendChild(raceWeekLabel);
-
-    for (let d = 0; d < 7; d++) {
-      const cell = document.createElement('div');
-      cell.className = 'day-cell';
-
-      if (d === raceDayIdx) {
-        const block = document.createElement('div');
-        block.className = 'workout-block race-block';
-
-        const flag = document.createElement('div');
-        flag.className = 'race-flag';
-        flag.textContent = '\uD83C\uDFC1';
-        block.appendChild(flag);
-
-        const title = document.createElement('div');
-        title.className = 'workout-type';
-        title.textContent = raceLabel;
-        block.appendChild(title);
-
-        const distances = document.createElement('div');
-        distances.className = 'workout-detail';
-        distances.textContent = `${dist.swim}km / ${dist.bike}km / ${dist.run}km`;
-        block.appendChild(distances);
-
-        cell.appendChild(block);
-      }
-
-      raceRow.appendChild(cell);
-    }
-
-    grid.appendChild(raceRow);
-  }
-
   grid.querySelectorAll('.week-row[data-group-idx]').forEach(row => {
     const idx = parseInt(row.dataset.groupIdx);
     if (currentGroups[idx]) updateProgress(row, currentGroups[idx]);
@@ -2620,6 +2682,11 @@ function initDrag(e, block) {
         const targetGroup = parseInt(cell.dataset.groupIdx);
         const targetDay = parseInt(cell.dataset.dayIdx);
         if (targetGroup === dragData.groupIdx) {
+          const targetWeek = currentGroups[targetGroup]?.template;
+          if (targetWeek?.isRaceWeek && targetDay >= targetWeek.raceDayIdx) {
+            lastDropTarget = null;
+            return;
+          }
           const workout = getDraggedWorkout();
           if (workout) {
             const hasConflict = wouldCauseAdjacentConflict(
@@ -2675,6 +2742,17 @@ function performPlanDrop(cell) {
 
   const workout = days[sourceDayIdx]?.[workoutIdx];
   if (!workout) return;
+  if (workout.isRace) return;
+  if (
+    currentGroups[groupIdx]?.template?.isRaceWeek &&
+    (
+      sourceDayIdx >= currentGroups[groupIdx].template.raceDayIdx ||
+      targetDayIdx >= currentGroups[groupIdx].template.raceDayIdx ||
+      days[targetDayIdx]?.some(w => w.isRace)
+    )
+  ) {
+    return;
+  }
 
   // Map workout objects to their old keys before the move
   const oldKeyMap = new Map();
@@ -2726,8 +2804,7 @@ function performPlanDrop(cell) {
   migratedCompleted.forEach(k => completedWorkouts.add(k));
   migratedSkipped.forEach(k => skippedWorkouts.add(k));
 
-  currentGroups[groupIdx].template.totalSessions =
-    days.flat().filter(w => w.discipline !== 'rest').length;
+  currentGroups[groupIdx].template.totalSessions = countPlannedSessions(days);
 
   weekOverrides[groupIdx] = JSON.parse(JSON.stringify(days));
 
@@ -2797,8 +2874,8 @@ function checkAdjacentConflicts() {
 }
 
 function updateProgress(row, group) {
-  const completed = row.querySelectorAll('.workout-block.completed:not(.workout-rest)');
-  const skipped = row.querySelectorAll('.workout-block.skipped:not(.workout-rest)');
+  const completed = row.querySelectorAll('.workout-block.completed:not(.workout-rest):not(.workout-race)');
+  const skipped = row.querySelectorAll('.workout-block.skipped:not(.workout-rest):not(.workout-race)');
   const total = group.template.totalSessions;
   const meta = row.querySelector('.week-progress');
   if (meta) {
@@ -2827,8 +2904,8 @@ function updateOverallProgress() {
     const row = planGrid.querySelector(`.week-row[data-group-idx="${idx}"]`);
     if (!row) return;
     totalAll += group.template.totalSessions;
-    completedAll += row.querySelectorAll('.workout-block.completed:not(.workout-rest)').length;
-    skippedAll += row.querySelectorAll('.workout-block.skipped:not(.workout-rest)').length;
+    completedAll += row.querySelectorAll('.workout-block.completed:not(.workout-rest):not(.workout-race)').length;
+    skippedAll += row.querySelectorAll('.workout-block.skipped:not(.workout-rest):not(.workout-race)').length;
   });
 
   const resolved = completedAll + skippedAll;
@@ -2948,10 +3025,7 @@ function validateConfig(config) {
 
   const fitness = configToFitnessLevels(config);
   const readinessTier = computeReadinessTier(config, fitness, capacities);
-  const weeksToRace = Math.max(
-    1,
-    Math.floor((new Date(config.raceDate) - new Date(config.planStart)) / (1000 * 60 * 60 * 24 * 7))
-  );
+  const weeksToRace = getRaceWeekContext(config.planStart, config.raceDate).totalWeeks;
   const riskAssessment = assessPlanRisk(config, capacities, config.raceType, weeksToRace, readinessTier);
   result.riskAssessment = riskAssessment;
 
@@ -3257,23 +3331,37 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
   const block = document.createElement('div');
   block.className = `workout-block ${getDisciplineClass(workout.discipline)}`;
   if (workout.isBrick) block.classList.add('workout-brick');
+  if (workout.isRace) block.classList.add('race-block');
   block.dataset.groupIdx = groupIdx;
   block.dataset.dayIdx = dayIdx;
   block.dataset.workoutIdx = workoutIdx;
 
-  block.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    initDrag(e, block);
-  });
+  if (!workout.isRace) {
+    block.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      initDrag(e, block);
+    });
+  }
 
   const typeEl = document.createElement('div');
   typeEl.className = 'workout-type';
-  typeEl.textContent = workout.isBrick ? 'BRICK RUN' : getDisciplineLabel(workout.discipline);
+  if (workout.isRace) {
+    const flag = document.createElement('div');
+    flag.className = 'race-flag';
+    flag.textContent = '\uD83C\uDFC1';
+    block.appendChild(flag);
+    typeEl.textContent = (workout.raceLabel || workout.raceType || 'Race').toUpperCase();
+  } else {
+    typeEl.textContent = workout.isBrick ? 'BRICK RUN' : getDisciplineLabel(workout.discipline);
+  }
   block.appendChild(typeEl);
 
   const detailEl = document.createElement('div');
   detailEl.className = 'workout-detail';
-  if (workout.discipline === 'rest') {
+  if (workout.isRace) {
+    const dist = workout.raceDistances || RACE_DISTANCES[workout.raceType] || RACE_DISTANCES.olympic;
+    detailEl.textContent = `${dist.swim}km / ${dist.bike}km / ${dist.run}km`;
+  } else if (workout.discipline === 'rest') {
     detailEl.textContent = '—';
   } else if (workout.discipline === 'strength') {
     detailEl.textContent = 'full body';
@@ -3292,7 +3380,7 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
     block.appendChild(suggEl);
   }
 
-  if (!isTemplate && workout.discipline !== 'rest') {
+  if (!isTemplate && workout.discipline !== 'rest' && !workout.isRace) {
     const key = `${groupIdx}-${dayIdx}-${workoutIdx}`;
     if (completedWorkouts.has(key)) {
       block.classList.add('completed');
@@ -3404,11 +3492,13 @@ function applyTemplateToFullPlan(template, config, vacations) {
   groups.forEach(group => {
     group.weeks.forEach(week => {
       if (week.isVacation) return;
+      const raceDayIdx = week.isRaceWeek ? week.raceDayIdx : null;
 
       // Collect all workouts from this week, grouped by discipline
       const allWorkouts = {};
       for (let d = 0; d < 7; d++) {
         week.days[d].forEach(w => {
+          if (w.isRace) return;
           if (!allWorkouts[w.discipline]) allWorkouts[w.discipline] = [];
           allWorkouts[w.discipline].push(w);
         });
@@ -3421,6 +3511,7 @@ function applyTemplateToFullPlan(template, config, vacations) {
 
       // Place workouts according to template layout
       for (let d = 0; d < 7; d++) {
+        if (week.isRaceWeek && d >= raceDayIdx) continue;
         const templateDay = template.days[d];
         templateDay.forEach(templateWorkout => {
           const discipline = templateWorkout.discipline;
@@ -3454,6 +3545,7 @@ function applyTemplateToFullPlan(template, config, vacations) {
       if (leftoverBricks.length > 0) {
         let bikeDay = parseInt(config.longDay || 5);
         for (let dd = 0; dd < 7; dd++) {
+          if (week.isRaceWeek && dd >= raceDayIdx) continue;
           if (week.days[dd].some(w => w.discipline === 'bike' && w.isLong)) {
             bikeDay = dd;
             break;
@@ -3465,10 +3557,13 @@ function applyTemplateToFullPlan(template, config, vacations) {
       // Fill empty days with rest (recovery/taper weeks may have fewer sessions than template)
       for (let d = 0; d < 7; d++) {
         if (week.days[d].length === 0) {
-          week.days[d].push({ discipline: 'rest', duration: 0, intensity: 'rest' });
+          week.days[d].push(buildRestWorkout());
         }
       }
-      week.totalSessions = week.days.flat().filter(w => w.discipline !== 'rest').length;
+      finalizeRaceWeekLayout(week);
+      if (!week.isRaceWeek) {
+        week.totalSessions = countPlannedSessions(week.days);
+      }
     });
 
     // Update the group template to first week
@@ -3494,8 +3589,7 @@ function showSection(id) {
   if (id === 'plan-display' && currentPlanConfig) {
     const label = RACE_LABELS[currentPlanConfig.raceType] || currentPlanConfig.raceType;
     const raceDate = new Date(currentPlanConfig.raceDate);
-    const startDate = new Date(currentPlanConfig.planStart);
-    const totalWeeks = Math.max(1, Math.floor((raceDate - startDate) / (1000 * 60 * 60 * 24 * 7)));
+    const totalWeeks = getRaceWeekContext(currentPlanConfig.planStart, currentPlanConfig.raceDate).totalWeeks;
     const raceDateStr = raceDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 
     document.getElementById('plan-title').textContent = `Your ${label} plan`;
@@ -3739,9 +3833,14 @@ function generateICS(timeMap) {
         const endDate = new Date(eventDate);
         endDate.setMinutes(endDate.getMinutes() + (workout.duration || 30));
 
-        const summary = `${getDisciplineLabel(workout.discipline)} - ${workout.duration} min`;
+        const summary = workout.isRace
+          ? (workout.raceLabel || 'Race Day')
+          : `${getDisciplineLabel(workout.discipline)} - ${workout.duration} min`;
 
         let description = '';
+        if (workout.isRace && workout.raceDistances) {
+          description = `${workout.raceDistances.swim}km swim\n${workout.raceDistances.bike}km bike\n${workout.raceDistances.run}km run`;
+        }
         if (workout.suggestion) {
           description = workout.suggestion;
         }
@@ -4039,7 +4138,10 @@ function setupFitnessListeners() {
           const i = parseInt(idx);
           if (groups[i]) {
             groups[i].template.days = days;
-            groups[i].template.totalSessions = days.flat().filter(w => w.discipline !== 'rest').length;
+            finalizeRaceWeekLayout(groups[i].template);
+            if (!groups[i].template.isRaceWeek) {
+              groups[i].template.totalSessions = countPlannedSessions(days);
+            }
           }
         });
         renderPlan(groups);
