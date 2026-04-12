@@ -2,6 +2,31 @@
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const WEEKLY_HOURS_ORDER = ['lt3', '3-6', '6-10', '10-15', '15+'];
+const WEEKLY_HOURS_LABELS = {
+  'lt3': 'minder dan 3 uur',
+  '3-6': '3-6 uur',
+  '6-10': '6-10 uur',
+  '10-15': '10-15 uur',
+  '15+': '15+ uur',
+};
+const DISCIPLINE_LABELS_NL = {
+  run: 'loop',
+  bike: 'fiets',
+  swim: 'zwem',
+  strength: 'kracht',
+};
+const READINESS_TIER_LABELS_NL = {
+  novice: 'starter',
+  developing: 'opbouw',
+  durable: 'duurzaam',
+};
+const RISK_LEVEL_LABELS_NL = {
+  low: 'laag',
+  moderate: 'matig',
+  high: 'hoog',
+  unsafe: 'onveilig',
+};
 
 // Race distances in km: [swim, bike, run]
 const RACE_LABELS = {
@@ -244,16 +269,130 @@ const PEAK_MINUTES = {
   },
 };
 
-// Long session multiplier by race distance (applied to regular session duration)
-const LONG_SESSION_MULTIPLIER = {
-  sprint:  { run: 1.5, bike: 1.5 },
-  quarter: { run: 1.6, bike: 1.7 },
-  olympic: { run: 1.7, bike: 1.8 },
-  half:    { run: 2.0, bike: 2.5 },
-  full:    { run: 2.5, bike: 3.0 },
+const LOAD_PRESETS = {
+  mild: {
+    weeklyHoursTarget: {
+      'lt3': 150,
+      '3-6': 260,
+      '6-10': 450,
+      '10-15': 720,
+      '15+': 930,
+    },
+    longSessionMultiplier: {
+      sprint:  { run: 1.45, bike: 1.45, swim: 1.15 },
+      quarter: { run: 1.55, bike: 1.70, swim: 1.20 },
+      olympic: { run: 1.65, bike: 1.80, swim: 1.25 },
+      half:    { run: 1.85, bike: 2.30, swim: 1.30 },
+      full:    { run: 2.20, bike: 2.70, swim: 1.35 },
+    },
+    disciplinePeakFloorRatio: { run: 0.80, bike: 0.78, swim: 0.70 },
+    scaleFactorCapsByPhaseAndHours: {
+      base:  { 'lt3': 1.02, '3-6': 1.05, '6-10': 1.08, '10-15': 1.10, '15+': 1.12 },
+      build: { 'lt3': 1.05, '3-6': 1.08, '6-10': 1.12, '10-15': 1.15, '15+': 1.18 },
+      peak:  { 'lt3': 1.08, '3-6': 1.12, '6-10': 1.16, '10-15': 1.20, '15+': 1.24 },
+    },
+    strengthBudget: {
+      reservePerSession: 40,
+      minEnduranceBudget: 120,
+    },
+    phaseBudgetMultiplier: {
+      base: 0.82,
+      build: 0.96,
+      peak: 1.20,
+      taper: 0.72,
+    },
+    lowFrequencyLongGuard: {
+      sessionThreshold: 1,
+      multiplierFactor: { run: 0.92, bike: 0.82, swim: 0.88 },
+      longIncreaseFactor: { run: 0.90, bike: 0.75, swim: 0.85 },
+      minLongIncreaseCap: { run: 6, bike: 8, swim: 5 },
+    },
+    budgetSafeFloorRatio: 1.00,
+  },
+  balanced: {
+    weeklyHoursTarget: {
+      'lt3': 150,
+      '3-6': 270,
+      '6-10': 480,
+      '10-15': 750,
+      '15+': 960,
+    },
+    longSessionMultiplier: {
+      sprint:  { run: 1.5, bike: 1.5, swim: 1.20 },
+      quarter: { run: 1.6, bike: 1.7, swim: 1.25 },
+      olympic: { run: 1.7, bike: 1.8, swim: 1.30 },
+      half:    { run: 2.0, bike: 2.5, swim: 1.35 },
+      full:    { run: 2.5, bike: 3.0, swim: 1.40 },
+    },
+    disciplinePeakFloorRatio: { run: 0.85, bike: 0.80, swim: 0.75 },
+    scaleFactorCapsByPhaseAndHours: {
+      base:  { 'lt3': 1.05, '3-6': 1.08, '6-10': 1.12, '10-15': 1.16, '15+': 1.20 },
+      build: { 'lt3': 1.08, '3-6': 1.12, '6-10': 1.18, '10-15': 1.24, '15+': 1.30 },
+      peak:  { 'lt3': 1.12, '3-6': 1.18, '6-10': 1.26, '10-15': 1.34, '15+': 1.42 },
+    },
+    strengthBudget: {
+      reservePerSession: 35,
+      minEnduranceBudget: 120,
+    },
+    phaseBudgetMultiplier: {
+      base: 0.85,
+      build: 1.00,
+      peak: 1.15,
+      taper: 0.75,
+    },
+    lowFrequencyLongGuard: {
+      sessionThreshold: 1,
+      multiplierFactor: { run: 0.96, bike: 0.88, swim: 0.92 },
+      longIncreaseFactor: { run: 0.95, bike: 0.82, swim: 0.90 },
+      minLongIncreaseCap: { run: 8, bike: 10, swim: 6 },
+    },
+    budgetSafeFloorRatio: 1.05,
+  },
+  assertive: {
+    weeklyHoursTarget: {
+      'lt3': 170,
+      '3-6': 300,
+      '6-10': 520,
+      '10-15': 810,
+      '15+': 1020,
+    },
+    longSessionMultiplier: {
+      sprint:  { run: 1.55, bike: 1.55, swim: 1.20 },
+      quarter: { run: 1.7, bike: 1.85, swim: 1.30 },
+      olympic: { run: 1.8, bike: 2.0, swim: 1.35 },
+      half:    { run: 2.1, bike: 2.6, swim: 1.40 },
+      full:    { run: 2.6, bike: 3.1, swim: 1.45 },
+    },
+    disciplinePeakFloorRatio: { run: 0.88, bike: 0.82, swim: 0.78 },
+    scaleFactorCapsByPhaseAndHours: {
+      base:  { 'lt3': 1.08, '3-6': 1.12, '6-10': 1.18, '10-15': 1.24, '15+': 1.30 },
+      build: { 'lt3': 1.12, '3-6': 1.18, '6-10': 1.26, '10-15': 1.34, '15+': 1.42 },
+      peak:  { 'lt3': 1.16, '3-6': 1.24, '6-10': 1.34, '10-15': 1.44, '15+': 1.52 },
+    },
+    strengthBudget: {
+      reservePerSession: 30,
+      minEnduranceBudget: 140,
+    },
+    phaseBudgetMultiplier: {
+      base: 0.90,
+      build: 1.05,
+      peak: 1.15,
+      taper: 0.78,
+    },
+    lowFrequencyLongGuard: {
+      sessionThreshold: 1,
+      multiplierFactor: { run: 0.98, bike: 0.92, swim: 0.95 },
+      longIncreaseFactor: { run: 0.96, bike: 0.88, swim: 0.92 },
+      minLongIncreaseCap: { run: 8, bike: 12, swim: 6 },
+    },
+    budgetSafeFloorRatio: 1.10,
+  },
 };
+const ACTIVE_LOAD_PRESET = 'mild';
+const ACTIVE_LOAD_CONFIG = LOAD_PRESETS[ACTIVE_LOAD_PRESET] || LOAD_PRESETS.balanced;
+const LONG_SESSION_MULTIPLIER = ACTIVE_LOAD_CONFIG.longSessionMultiplier;
 
-const MAX_LONG_DURATION = { run: 150, bike: 300 };
+const MAX_LONG_DURATION = { run: 150, bike: 300, swim: 90 };
 
 // Taper length in weeks by race distance
 const TAPER_WEEKS = {
@@ -280,14 +419,8 @@ const PHASE_SPLITS = {
   peak:  0.25,
 };
 
-// Target weekly non-strength minutes by hours setting (midpoint of each range)
-const WEEKLY_HOURS_TARGET = {
-  'lt3':  150,
-  '3-6':  270,
-  '6-10': 480,
-  '10-15': 750,
-  '15+':  960,
-};
+// Target weekly non-strength minutes by hours setting (preset-driven).
+const WEEKLY_HOURS_TARGET = ACTIVE_LOAD_CONFIG.weeklyHoursTarget;
 
 const SESSION_MIN_MINUTES = { run: 15, bike: 20, swim: 15 };
 
@@ -296,6 +429,8 @@ const SESSION_MIN_MINUTES = { run: 15, bike: 20, swim: 15 };
 const SAFE_START_FRACTION = 0.8;
 const CAPACITY_FLOORS = { run: 10, bike: 20, swim: 10 };
 const CAPACITY_FALLBACK_START = { run: 20, bike: 35, swim: 20 };
+const CAPACITY_START_BOOST_CAP = { run: 25, bike: 45, swim: 20 };
+const MIN_PROGRESS_STEP = { run: 5, bike: 5, swim: 5 };
 const READINESS_ORDER = ['novice', 'developing', 'durable'];
 const RISK_ORDER = ['low', 'moderate', 'high', 'unsafe'];
 
@@ -308,13 +443,18 @@ const PROGRESSION_CAPS = {
 const LONG_MULTIPLIER_CAPS = {
   novice: {
     earlyWeeks: 4,
-    early: { run: 1.25, bike: 1.35 },
-    late: { run: 1.40, bike: 1.60 },
+    early: { run: 1.25, bike: 1.35, swim: 1.20 },
+    late: { run: 1.40, bike: 1.60, swim: 1.20 },
   },
   developing: {
     earlyWeeks: 0,
-    early: { run: 1.60, bike: 2.00 },
-    late: { run: 1.60, bike: 2.00 },
+    early: { run: 1.60, bike: 2.00, swim: 1.35 },
+    late: { run: 1.60, bike: 2.00, swim: 1.35 },
+  },
+  durable: {
+    earlyWeeks: 0,
+    early: { run: 9.99, bike: 9.99, swim: 1.50 },
+    late: { run: 9.99, bike: 9.99, swim: 1.50 },
   },
 };
 
@@ -355,13 +495,63 @@ const RACE_DEMAND_MINUTES = {
   full:    { run: 140, bike: 260, swim: 75 },
 };
 
+const VOLUME_WARNING_TARGET_MINUTES = {
+  sprint:  { run: 45, bike: 75, swim: 35 },
+  quarter: { run: 65, bike: 110, swim: 45 },
+  olympic: { run: 80, bike: 130, swim: 55 },
+  half:    { run: 115, bike: 210, swim: 65 },
+  full:    { run: 180, bike: 330, swim: 90 },
+};
+
 const VOLUME_WARNING_THRESHOLDS = {
-  runGap: 0.80,
-  bikeGap: 0.75,
-  totalGap: 0.78,
+  runGap: 0.85,
+  bikeGap: 0.85,
+  totalGap: 0.82,
   nonStrengthBudgetShare: 0.80,
   minWeeksToAssess: 10,
 };
+
+const EARLY_WEEKS_RAMP_GUARD = 3;
+const EARLY_WEEK_ABS_INCREASE_CAP = { 1: 5, 2: 5, 3: 8 };
+const EARLY_SCALE_FACTOR_CAP = { 1: 1.15, 2: 1.20, 3: 1.25 };
+const BASE_QUALITY_START_WEEK = 1;
+const BASE_INTERVAL_UNLOCKS = {
+  run: 25,
+  bike: 40,
+  swim: 20,
+};
+const SINGLE_BIKE_LONG_RIDE_SUPPORT = {
+  build: { multiplierFloor: 1.75, longIncreaseCapFloor: 24, peakFloorRatio: 0 },
+  peak: { multiplierFloor: 1.90, longIncreaseCapFloor: 30, peakFloorRatio: 0.83 },
+};
+const PROGRESSION_STAGE_RULES = {
+  early: { minWeek: 1, maxWeek: 4 },
+  adapted: { minWeek: 5, maxWeek: 10 },
+  established: { minWeek: 11, maxWeek: Infinity },
+};
+const DISCIPLINE_STAGE_CAPS = {
+  run: {
+    early: { pctCap: 0.06, absMinuteCap: 8, longIncreaseCap: 10 },
+    adapted: { pctCap: 0.08, absMinuteCap: 10, longIncreaseCap: 14 },
+    established: { pctCap: 0.09, absMinuteCap: 10, longIncreaseCap: 14 },
+  },
+  bike: {
+    early: { pctCap: 0.07, absMinuteCap: 10, longIncreaseCap: 15 },
+    adapted: { pctCap: 0.10, absMinuteCap: 16, longIncreaseCap: 22 },
+    established: { pctCap: 0.11, absMinuteCap: 20, longIncreaseCap: 24 },
+  },
+  swim: {
+    early: { pctCap: 0.07, absMinuteCap: 8, longIncreaseCap: 8 },
+    adapted: { pctCap: 0.09, absMinuteCap: 10, longIncreaseCap: 10 },
+    established: { pctCap: 0.10, absMinuteCap: 10, longIncreaseCap: 10 },
+  },
+};
+const DISCIPLINE_PEAK_FLOOR_RATIO = ACTIVE_LOAD_CONFIG.disciplinePeakFloorRatio;
+const SCALE_FACTOR_CAPS_BY_PHASE_AND_HOURS = ACTIVE_LOAD_CONFIG.scaleFactorCapsByPhaseAndHours;
+const STRENGTH_BUDGET_RULES = ACTIVE_LOAD_CONFIG.strengthBudget;
+const PHASE_BUDGET_MULTIPLIER = ACTIVE_LOAD_CONFIG.phaseBudgetMultiplier;
+const LOW_FREQUENCY_LONG_GUARD = ACTIVE_LOAD_CONFIG.lowFrequencyLongGuard;
+const BUDGET_SAFE_FLOOR_RATIO = ACTIVE_LOAD_CONFIG.budgetSafeFloorRatio;
 
 function clampMinutes(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -397,8 +587,14 @@ function computeStartingDurations(levels, capacities) {
       return;
     }
     const safeFromCapacity = Math.round((capacity * SAFE_START_FRACTION) / 5) * 5;
-    const bounded = Math.min(base, safeFromCapacity);
-    startDurations[discipline] = clampMinutes(bounded, CAPACITY_FLOORS[discipline], base);
+    const capacityAnchoredStart = capacity > base
+      ? Math.min(safeFromCapacity, base + (CAPACITY_START_BOOST_CAP[discipline] || 0))
+      : safeFromCapacity;
+    startDurations[discipline] = clampMinutes(
+      capacityAnchoredStart,
+      CAPACITY_FLOORS[discipline],
+      Math.max(capacity, base)
+    );
   });
 
   return { startDurations, missingCapacities: missing };
@@ -444,6 +640,8 @@ function elevateRisk(current, next) {
 function assessPlanRisk(config, capacities, raceType, weeksToRace, readinessTier) {
   const race = raceType || config.raceType || 'olympic';
   const tier = readinessTier || 'developing';
+  const raceLabel = RACE_LABELS[race] || race;
+  const tierLabel = READINESS_TIER_LABELS_NL[tier] || tier;
   const timelineMin = TIMELINE_MIN_WEEKS[tier]?.[race] || 12;
   const minCapacity = RACE_CAPACITY_MIN[race] || RACE_CAPACITY_MIN.olympic;
   const reasons = [];
@@ -452,10 +650,10 @@ function assessPlanRisk(config, capacities, raceType, weeksToRace, readinessTier
 
   if (weeksToRace < timelineMin - 2) {
     risk = 'unsafe';
-    reasons.push(`Timeline too short: ${weeksToRace} weeks for ${race} (${tier} minimum ${timelineMin}).`);
+    reasons.push(`Tijdlijn te kort: ${weeksToRace} weken voor ${raceLabel} (${tierLabel} minimum ${timelineMin}).`);
   } else if (weeksToRace < timelineMin) {
     risk = elevateRisk(risk, 'high');
-    reasons.push(`Short timeline: ${weeksToRace} weeks is close to ${tier} minimum ${timelineMin}.`);
+    reasons.push(`Korte aanlooptijd: ${weeksToRace} weken ligt dicht bij het ${tierLabel}-minimum van ${timelineMin}.`);
   }
 
   let below80Count = 0;
@@ -463,7 +661,7 @@ function assessPlanRisk(config, capacities, raceType, weeksToRace, readinessTier
   ['run', 'bike', 'swim'].forEach(discipline => {
     const cap = capacities[discipline];
     if (cap == null) {
-      reasons.push(`Missing ${discipline} capacity input.`);
+      reasons.push(`Ontbrekende capaciteitsinput voor ${DISCIPLINE_LABELS_NL[discipline] || discipline}.`);
       risk = elevateRisk(risk, 'moderate');
       return;
     }
@@ -475,11 +673,11 @@ function assessPlanRisk(config, capacities, raceType, weeksToRace, readinessTier
 
   if (below80Count >= 2) {
     risk = elevateRisk(risk, 'high');
-    reasons.push('Multiple disciplines are below 80% of recommended starting durability for this race.');
+    reasons.push('Meerdere disciplines zitten onder 80% van de aanbevolen startduurzaamheid voor deze race.');
   }
   if (below60Count >= 1 && weeksToRace < timelineMin) {
     risk = 'unsafe';
-    reasons.push('Capacity is below 60% of minimum in at least one discipline while timeline is short.');
+    reasons.push('De capaciteit zit in minstens één discipline onder 60% van het minimum terwijl de aanlooptijd kort is.');
   }
 
   return {
@@ -494,7 +692,6 @@ function assessPlanRisk(config, capacities, raceType, weeksToRace, readinessTier
 }
 
 function getLongMultiplierCap(readinessTier, discipline, trainingWeekIdx) {
-  if (readinessTier === 'durable') return Infinity;
   const profile = LONG_MULTIPLIER_CAPS[readinessTier];
   if (!profile) return Infinity;
   const capSet = trainingWeekIdx < profile.earlyWeeks ? profile.early : profile.late;
@@ -514,6 +711,111 @@ function computeProgressCaps(readinessTier, riskLevel = 'low') {
   };
 }
 
+function getProgressionStage(trainingWeekNumber, riskLevel) {
+  if (riskLevel === 'high') return 'early';
+  if (trainingWeekNumber >= PROGRESSION_STAGE_RULES.established.minWeek) return 'established';
+  if (trainingWeekNumber >= PROGRESSION_STAGE_RULES.adapted.minWeek) return 'adapted';
+  return 'early';
+}
+
+function getDisciplineProgressCaps(readinessTier, progressionStage, discipline, riskLevel = 'low') {
+  const baseCaps = computeProgressCaps(readinessTier, riskLevel);
+  if (riskLevel === 'high') return baseCaps;
+
+  const stageCaps = DISCIPLINE_STAGE_CAPS[discipline]?.[progressionStage];
+  if (!stageCaps) return baseCaps;
+
+  return {
+    pctCap: Math.max(baseCaps.pctCap, stageCaps.pctCap),
+    absMinuteCap: Math.max(baseCaps.absMinuteCap, stageCaps.absMinuteCap),
+    longIncreaseCap: Math.max(baseCaps.longIncreaseCap, stageCaps.longIncreaseCap),
+  };
+}
+
+function getEffectiveEnduranceBudget(weeklyHours, strengthSessions, phase = 'build') {
+  const baseBudget = WEEKLY_HOURS_TARGET[weeklyHours] || WEEKLY_HOURS_TARGET['6-10'] || 480;
+  const safeStrengthSessions = Math.max(0, Number(strengthSessions) || 0);
+  const reservePerSession = Math.max(0, Number(STRENGTH_BUDGET_RULES?.reservePerSession) || 0);
+  const phaseMultiplier = Number(PHASE_BUDGET_MULTIPLIER?.[phase]) || 1;
+  const minBudget = Math.max(
+    SESSION_MIN_MINUTES.run + SESSION_MIN_MINUTES.bike + SESSION_MIN_MINUTES.swim,
+    Number(STRENGTH_BUDGET_RULES?.minEnduranceBudget) || 120
+  );
+  const reserved = safeStrengthSessions * reservePerSession;
+  const adjustedBudget = Math.round(baseBudget * phaseMultiplier);
+  const peakMultiplier = Math.max(1, Number(PHASE_BUDGET_MULTIPLIER?.peak) || 1);
+  const maxBudget = Math.max(baseBudget, Math.round(baseBudget * peakMultiplier));
+  return clampMinutes(adjustedBudget - reserved, minBudget, maxBudget);
+}
+
+function getPhaseScaleFactorCap(phase, weeklyHours) {
+  const phaseCaps = SCALE_FACTOR_CAPS_BY_PHASE_AND_HOURS?.[phase];
+  if (!phaseCaps) return Infinity;
+  const cap = phaseCaps[weeklyHours];
+  return Number.isFinite(cap) && cap > 0 ? cap : Infinity;
+}
+
+function getSingleBikeLongRideSupport(discipline, sessionCount, phase, riskLevel = 'low') {
+  if (discipline !== 'bike') return null;
+  if ((Number(sessionCount) || 0) !== 1) return null;
+  if (riskLevel === 'high' || phase === 'base' || phase === 'taper') return null;
+  return SINGLE_BIKE_LONG_RIDE_SUPPORT[phase] || null;
+}
+
+function getLowFrequencyLongSettings(
+  discipline,
+  sessionCount,
+  multiplier,
+  longIncreaseCap,
+  isRecoveryWeek,
+  isTaperWeek,
+  phase = 'build',
+  riskLevel = 'low'
+) {
+  if (isRecoveryWeek || isTaperWeek) {
+    return { multiplier, longIncreaseCap };
+  }
+
+  const threshold = Math.max(0, Number(LOW_FREQUENCY_LONG_GUARD?.sessionThreshold) || 0);
+  if ((Number(sessionCount) || 0) > threshold) {
+    return { multiplier, longIncreaseCap };
+  }
+
+  const multiplierFactor = LOW_FREQUENCY_LONG_GUARD?.multiplierFactor?.[discipline] || 1;
+  const longCapFactor = LOW_FREQUENCY_LONG_GUARD?.longIncreaseFactor?.[discipline] || 1;
+  const minLongCap = Math.max(1, Number(LOW_FREQUENCY_LONG_GUARD?.minLongIncreaseCap?.[discipline]) || 1);
+  let adjustedMultiplier = Math.max(1.0, multiplier * multiplierFactor);
+  let adjustedLongCap = Math.max(minLongCap, Math.round(longIncreaseCap * longCapFactor));
+  const singleBikeSupport = getSingleBikeLongRideSupport(discipline, sessionCount, phase, riskLevel);
+  if (singleBikeSupport) {
+    adjustedMultiplier = Math.max(adjustedMultiplier, singleBikeSupport.multiplierFloor || adjustedMultiplier);
+    adjustedLongCap = Math.max(adjustedLongCap, singleBikeSupport.longIncreaseCapFloor || adjustedLongCap);
+  }
+
+  return {
+    multiplier: adjustedMultiplier,
+    longIncreaseCap: adjustedLongCap,
+  };
+}
+
+function getRiskLevelForTrainingWeek(baseRiskLevel, riskAssessment, trainingWeekNumber, totalTrainingWeeks) {
+  if (baseRiskLevel !== 'high') return baseRiskLevel;
+
+  const reasons = Array.isArray(riskAssessment?.reasons) ? riskAssessment.reasons : [];
+  const hasTimelinePressureReason = reasons.some(reason =>
+    /timeline too short|short timeline/i.test(String(reason))
+  );
+  if (hasTimelinePressureReason) return 'high';
+
+  const minimumWeeks = Number(riskAssessment?.minimumWeeks) || 12;
+  const hasTimelinePressure = totalTrainingWeeks < minimumWeeks;
+  if (hasTimelinePressure) return 'high';
+
+  if (trainingWeekNumber <= 6) return 'high';
+  if (trainingWeekNumber <= 12) return 'moderate';
+  return 'low';
+}
+
 function estimateRaceDemandMinutes(raceType) {
   const demand = RACE_DEMAND_MINUTES[raceType] || RACE_DEMAND_MINUTES.olympic;
   return {
@@ -522,9 +824,22 @@ function estimateRaceDemandMinutes(raceType) {
   };
 }
 
-function estimateFeasiblePeakMinutes(config, readinessTier) {
-  const budget = WEEKLY_HOURS_TARGET[config.weeklyHours] || 480;
-  const nonStrengthBudget = budget * VOLUME_WARNING_THRESHOLDS.nonStrengthBudgetShare;
+function estimateVolumeWarningDemandMinutes(raceType) {
+  const demand = VOLUME_WARNING_TARGET_MINUTES[raceType] || VOLUME_WARNING_TARGET_MINUTES.olympic;
+  return {
+    ...demand,
+    total: demand.run + demand.bike + demand.swim,
+  };
+}
+
+function estimateFeasiblePeakMinutes(config, readinessTier, options = {}) {
+  const {
+    conservative = true,
+    phase = 'peak',
+  } = options;
+  const enduranceBudget = getEffectiveEnduranceBudget(config.weeklyHours, config.strengthSessions, phase);
+  const budgetShare = conservative ? VOLUME_WARNING_THRESHOLDS.nonStrengthBudgetShare : 1;
+  const nonStrengthBudget = enduranceBudget * budgetShare;
   const runSessions = Math.max(0, Number(config.runSessions) || 0);
   const bikeSessions = Math.max(0, Number(config.bikeSessions) || 0);
   const swimSessions = Math.max(0, Number(config.swimSessions) || 0);
@@ -549,46 +864,46 @@ function estimateFeasiblePeakMinutes(config, readinessTier) {
     swim: swimSessions > 0 ? weeklyMinutes.swim / swimSessions : 0,
   };
 
-  const raceLongMult = LONG_SESSION_MULTIPLIER[config.raceType] || { run: 1.5, bike: 1.5 };
+  const raceLongMult = LONG_SESSION_MULTIPLIER[config.raceType] || { run: 1.5, bike: 1.5, swim: 1.3 };
   const runLongMult = Math.min(raceLongMult.run, getLongMultiplierCap(readinessTier, 'run', 999));
   const bikeLongMult = Math.min(raceLongMult.bike, getLongMultiplierCap(readinessTier, 'bike', 999));
-  const runLong = runSessions > 1 ? regularMinutes.run * runLongMult : regularMinutes.run;
-  const bikeLong = bikeSessions > 0 ? regularMinutes.bike * bikeLongMult : 0;
+  const swimLongMult = Math.min(raceLongMult.swim || 1.3, getLongMultiplierCap(readinessTier, 'swim', 999));
+
+  const runLowFrequency = getLowFrequencyLongSettings('run', runSessions, runLongMult, 999, false, false, phase, 'low');
+  const bikeLowFrequency = getLowFrequencyLongSettings('bike', bikeSessions, bikeLongMult, 999, false, false, phase, 'low');
+  const swimLowFrequency = getLowFrequencyLongSettings('swim', swimSessions, swimLongMult, 999, false, false, phase, 'low');
+  const hasLongSwim = swimSessions >= 2;
+
+  const runLong = runSessions > 1 ? regularMinutes.run * runLowFrequency.multiplier : regularMinutes.run;
+  const bikeLong = bikeSessions > 0 ? regularMinutes.bike * bikeLowFrequency.multiplier : 0;
+  const swimLong = hasLongSwim ? regularMinutes.swim * swimLowFrequency.multiplier : regularMinutes.swim;
 
   return {
     runLong: Math.round(runLong / 5) * 5,
     bikeLong: Math.round(bikeLong / 5) * 5,
+    swimLong: Math.round(swimLong / 5) * 5,
     swimRegular: Math.round(regularMinutes.swim / 5) * 5,
     totalNonStrength: Math.round(weeklyMinutes.run + weeklyMinutes.bike + weeklyMinutes.swim),
     sessionCounts: { run: runSessions, bike: bikeSessions, swim: swimSessions },
   };
 }
 
-function assessWeeklyVolumeGap(config, readinessTier, capacities, weeksToRace) {
-  if (weeksToRace < VOLUME_WARNING_THRESHOLDS.minWeeksToAssess) {
-    return { isGap: false, reasons: [], suggestions: [], reasonKeys: [] };
-  }
-
-  const feasible = estimateFeasiblePeakMinutes(config, readinessTier);
+function analyzeWeeklyVolumeGap(config, readinessTier) {
+  const feasible = estimateFeasiblePeakMinutes(config, readinessTier, { conservative: true, phase: 'peak' });
   if (!feasible) {
-    return { isGap: false, reasons: [], suggestions: [], reasonKeys: [] };
+    return { isGap: false, reasons: [], reasonKeys: [], feasible: null, demand: null };
   }
 
-  const demand = estimateRaceDemandMinutes(config.raceType);
+  const demand = estimateVolumeWarningDemandMinutes(config.raceType);
   const reasons = [];
   const reasonKeys = [];
-  const suggestions = [
-    'Consider increasing weekly hours.',
-    'Consider extending your timeline if possible.',
-    'Consider choosing a shorter race distance.',
-  ];
 
   if (
     feasible.sessionCounts.run > 0 &&
     feasible.runLong < demand.run * VOLUME_WARNING_THRESHOLDS.runGap
   ) {
     reasonKeys.push('volume-gap-run');
-    reasons.push(`Estimated peak long run is ~${feasible.runLong} min vs ~${demand.run} min target.`);
+    reasons.push(`Geschatte piek-lange duurloop is ~${feasible.runLong} min tegenover een richtdoel van ~${demand.run} min.`);
   }
 
   if (
@@ -596,28 +911,209 @@ function assessWeeklyVolumeGap(config, readinessTier, capacities, weeksToRace) {
     feasible.bikeLong < demand.bike * VOLUME_WARNING_THRESHOLDS.bikeGap
   ) {
     reasonKeys.push('volume-gap-bike');
-    reasons.push(`Estimated peak long bike is ~${feasible.bikeLong} min vs ~${demand.bike} min target.`);
+    reasons.push(`Geschatte piek-lange fietssessie is ~${feasible.bikeLong} min tegenover een richtdoel van ~${demand.bike} min.`);
   }
 
   if (feasible.totalNonStrength < demand.total * VOLUME_WARNING_THRESHOLDS.totalGap) {
     reasonKeys.push('volume-gap-total');
-    reasons.push(`Estimated weekly endurance budget (~${feasible.totalNonStrength} min) is low for ${config.raceType} demands.`);
+    reasons.push(`Geschat wekelijks duurbudget (~${feasible.totalNonStrength} min) is laag voor de eisen van ${RACE_LABELS[config.raceType] || config.raceType}.`);
   }
 
   return {
     isGap: reasons.length > 0,
     reasons,
-    suggestions,
     reasonKeys,
     feasible,
     demand,
   };
 }
 
+function getRecommendedWeeklyHoursRange(config, readinessTier) {
+  const currentIndex = WEEKLY_HOURS_ORDER.indexOf(config.weeklyHours);
+  if (currentIndex < 0) return null;
+
+  for (let i = currentIndex + 1; i < WEEKLY_HOURS_ORDER.length; i++) {
+    const candidateHours = WEEKLY_HOURS_ORDER[i];
+    const candidateAnalysis = analyzeWeeklyVolumeGap(
+      { ...config, weeklyHours: candidateHours },
+      readinessTier
+    );
+    if (!candidateAnalysis.isGap) {
+      return candidateHours;
+    }
+  }
+
+  return null;
+}
+
+function assessWeeklyVolumeGap(config, readinessTier, capacities, weeksToRace) {
+  if (weeksToRace < VOLUME_WARNING_THRESHOLDS.minWeeksToAssess) {
+    return { isGap: false, reasons: [], suggestions: [], reasonKeys: [] };
+  }
+
+  const analysis = analyzeWeeklyVolumeGap(config, readinessTier);
+  if (!analysis.feasible) {
+    return { isGap: false, reasons: [], suggestions: [], reasonKeys: [] };
+  }
+
+  const recommendedWeeklyHours = getRecommendedWeeklyHoursRange(config, readinessTier);
+  const suggestions = [];
+  if (recommendedWeeklyHours) {
+    suggestions.push(`Overweeg je wekelijkse trainingsuren te verhogen naar ${WEEKLY_HOURS_LABELS[recommendedWeeklyHours] || recommendedWeeklyHours}.`);
+  } else {
+    suggestions.push('Overweeg je wekelijkse trainingsuren te verhogen als dat mogelijk is.');
+  }
+  if ((Number(config.strengthSessions) || 0) > 1) {
+    suggestions.push('Overweeg één krachtsessie te schrappen om ongeveer 60 minuten vrij te maken voor duurtraining.');
+  }
+  suggestions.push('Overweeg je aanlooptijd te verlengen als dat mogelijk is.');
+  suggestions.push('Overweeg een kortere wedstrijdafstand.');
+
+  return {
+    isGap: analysis.isGap,
+    reasons: analysis.reasons,
+    suggestions,
+    reasonKeys: analysis.reasonKeys,
+    feasible: analysis.feasible,
+    demand: analysis.demand,
+    recommendedWeeklyHours,
+  };
+}
+
 function demoteIntensity(intensity) {
   if (intensity === 'interval') return 'threshold';
-  if (intensity === 'threshold') return 'tempo';
+  if (intensity === 'threshold') return 'threshold-lite';
+  if (intensity === 'threshold-lite') return 'tempo';
   if (intensity === 'tempo') return 'easy';
+  return 'easy';
+}
+
+function isQualityIntensity(intensity) {
+  return intensity === 'tempo' ||
+    intensity === 'threshold-lite' ||
+    intensity === 'threshold' ||
+    intensity === 'interval';
+}
+
+function isIntensityAllowed(intensity, discipline, gatingContext) {
+  const {
+    readinessTier,
+    phase,
+    riskLevel,
+    easyDuration,
+    stableWeeks,
+    preRecoveryStableWeeks = 0,
+    thresholdWeeks,
+    lastWeekWasRecovery,
+    trainingWeekNumber = 1,
+    totalSessions = 0,
+    isLong = false,
+    isRecoveryWeek = false,
+  } = gatingContext;
+
+  if (intensity === 'easy') return true;
+
+  const isBaseQualityPhase = phase === 'base' && trainingWeekNumber >= BASE_QUALITY_START_WEEK;
+  const isQualityPhase = isBaseQualityPhase || phase === 'build' || phase === 'peak';
+  const noviceMin = INTENSITY_UNLOCKS.novice[discipline] || 999;
+  const developingMin = INTENSITY_UNLOCKS.developing[discipline] || noviceMin;
+  const baseIntervalMin = BASE_INTERVAL_UNLOCKS[discipline] || Math.max(20, Math.round(noviceMin * 0.65));
+  const fallbackStableWeeks = lastWeekWasRecovery ? preRecoveryStableWeeks : stableWeeks;
+  const noviceReady = stableWeeks >= INTENSITY_UNLOCKS.novice.stableWeeks &&
+    easyDuration >= noviceMin &&
+    !lastWeekWasRecovery;
+
+  if (intensity === 'tempo') {
+    if (!isQualityPhase || isRecoveryWeek || isLong || totalSessions < 2) return false;
+    if (readinessTier === 'durable') return true;
+    if (readinessTier === 'developing') {
+      return easyDuration >= Math.max(20, Math.round(developingMin * 0.65));
+    }
+    if (readinessTier === 'novice') {
+      if (phase === 'base') {
+        return riskLevel !== 'high' &&
+          easyDuration >= Math.max(20, baseIntervalMin - 5) &&
+          !lastWeekWasRecovery;
+      }
+      return riskLevel !== 'high' &&
+        fallbackStableWeeks >= 1 &&
+        easyDuration >= Math.max(20, Math.round(noviceMin * 0.75)) &&
+        !isRecoveryWeek;
+    }
+    return false;
+  }
+
+  if (intensity === 'threshold-lite') {
+    if (!isQualityPhase || isRecoveryWeek || isLong || totalSessions < 2) return false;
+    if (readinessTier === 'durable') return true;
+    if (readinessTier === 'developing') {
+      if (phase === 'base') {
+        return riskLevel !== 'high' &&
+          easyDuration >= Math.max(25, baseIntervalMin);
+      }
+      return riskLevel !== 'high' &&
+        easyDuration >= Math.max(25, Math.round(developingMin * 0.85));
+    }
+    if (readinessTier === 'novice') {
+      if (phase === 'base') {
+        return riskLevel !== 'high' &&
+          easyDuration >= Math.max(25, baseIntervalMin) &&
+          !lastWeekWasRecovery;
+      }
+      return riskLevel !== 'high' &&
+        fallbackStableWeeks >= 1 &&
+        easyDuration >= Math.max(25, Math.round(noviceMin * 0.9)) &&
+        !isRecoveryWeek;
+    }
+    return false;
+  }
+
+  if (intensity === 'threshold') {
+    if (phase === 'base') return false;
+    if (readinessTier === 'durable') {
+      return riskLevel !== 'high';
+    }
+    if (readinessTier === 'developing') {
+      return easyDuration >= developingMin;
+    }
+    if (readinessTier === 'novice') {
+      return noviceReady;
+    }
+    return false;
+  }
+
+  if (intensity === 'interval') {
+    if (phase === 'base') return false;
+    if (phase !== 'peak' || riskLevel === 'high') return false;
+    if (readinessTier === 'durable') return true;
+    if (readinessTier === 'developing') {
+      return easyDuration >= developingMin;
+    }
+    if (readinessTier === 'novice') {
+      return noviceReady &&
+        thresholdWeeks >= INTENSITY_UNLOCKS.novice.thresholdWeeksBeforeInterval;
+    }
+    return false;
+  }
+
+  return false;
+}
+
+function resolveQualityFallback(intensity, discipline, gatingContext) {
+  const fallbackChain = [intensity];
+  let current = intensity;
+  while (current !== 'easy') {
+    current = demoteIntensity(current);
+    fallbackChain.push(current);
+    if (current === 'easy') break;
+  }
+
+  for (const candidate of fallbackChain) {
+    if (isIntensityAllowed(candidate, discipline, gatingContext)) {
+      return candidate;
+    }
+  }
+
   return 'easy';
 }
 
@@ -632,22 +1128,27 @@ function gateIntensity(intensity, discipline, gatingContext) {
     lastWeekWasRecovery,
   } = gatingContext;
 
-  if (riskLevel === 'high' && intensity === 'interval') {
-    return 'threshold';
+  if (gatingContext.isRecoveryWeek && isQualityIntensity(intensity)) {
+    return 'easy';
   }
 
-  if (readinessTier === 'durable') {
-    return riskLevel === 'high' ? demoteIntensity(intensity) : intensity;
+  if (!isQualityIntensity(intensity) || intensity === 'easy' || intensity === 'tempo') {
+    return intensity;
   }
+
+  if ((phase === 'base' || phase === 'build' || phase === 'peak') && !gatingContext.isLong && !gatingContext.isRecoveryWeek) {
+    return resolveQualityFallback(intensity, discipline, gatingContext);
+  }
+
+  if (riskLevel === 'high' && intensity === 'interval') return 'threshold';
+  if (readinessTier === 'durable') return riskLevel === 'high' ? demoteIntensity(intensity) : intensity;
 
   if (readinessTier === 'developing') {
     const minEasy = INTENSITY_UNLOCKS.developing[discipline] || 999;
     if ((intensity === 'threshold' || intensity === 'interval') && easyDuration < minEasy) {
       return demoteIntensity(intensity);
     }
-    if (intensity === 'interval' && phase !== 'peak') {
-      return 'threshold';
-    }
+    if (intensity === 'interval' && phase !== 'peak') return 'threshold';
     return intensity;
   }
 
@@ -675,6 +1176,7 @@ function getZoneLabel(intensity, discipline, ftp) {
   const zone =
     intensity === 'easy' ? 'zone 1-2' :
     intensity === 'tempo' ? 'zone 3' :
+    intensity === 'threshold-lite' ? 'zone 4' :
     intensity === 'threshold' ? 'zone 4' :
     intensity === 'interval' ? 'zone 4-5' : '';
   if (!zone) return '';
@@ -691,6 +1193,13 @@ function getDisciplineLabel(discipline) {
     case 'rest': return 'REST';
     default: return discipline.toUpperCase();
   }
+}
+
+function getTemplateIntensityLabel(intensity, isLong) {
+  if (isLong) return 'long';
+  if (intensity === 'easy') return 'easy';
+  if (intensity === 'threshold-lite') return 'threshold';
+  return intensity;
 }
 
 function getDisciplineClass(discipline) {
@@ -717,18 +1226,25 @@ function zoneToWattage(zoneLabel, ftp) {
 // === Workout Suggestions ===
 
 const WORKOUT_ENVELOPE = {
-  run:  { threshold: { warmup: 10, cooldown: 10, zone: 'zone 4' },
+  run:  { 'threshold-lite': { warmup: 10, cooldown: 10, zone: 'zone 4' },
+          threshold: { warmup: 10, cooldown: 10, zone: 'zone 4' },
           interval:  { warmup: 10, cooldown: 10, zone: 'zone 5' } },
-  bike: { threshold: { warmup: 15, cooldown: 10, zone: 'zone 4' },
+  bike: { 'threshold-lite': { warmup: 15, cooldown: 10, zone: 'zone 4' },
+          threshold: { warmup: 15, cooldown: 10, zone: 'zone 4' },
           interval:  { warmup: 15, cooldown: 10, zone: 'zone 5' } },
   swim: { easy:      { warmup: 8, cooldown: 4, zone: 'zone 2' },
           tempo:     { warmup: 8, cooldown: 4, zone: 'zone 3' },
+          'threshold-lite': { warmup: 8, cooldown: 4, zone: 'zone 4' },
           threshold: { warmup: 8, cooldown: 4, zone: 'zone 4' },
           interval:  { warmup: 8, cooldown: 4, zone: 'zone 5' } },
 };
 
 const WORKOUT_STRUCTURE = {
   run: {
+    'threshold-lite': [
+      { repLabel: '400m', repWork: 1.75, recoveryLabel: '400m recovery', recoveryTime: 2.5, maxReps: 6 },
+      { repLabel: '800m', repWork: 3.5, recoveryLabel: '400m recovery', recoveryTime: 2.5, maxReps: 4 },
+    ],
     threshold: [
       { repLabel: '800m',  repWork: 3.5, recoveryLabel: '400m recovery', recoveryTime: 1.5, maxReps: 6 },
       { repLabel: '1200m', repWork: 5.5, recoveryLabel: '600m recovery', recoveryTime: 2.5, maxReps: 4 },
@@ -739,6 +1255,10 @@ const WORKOUT_STRUCTURE = {
     ],
   },
   bike: {
+    'threshold-lite': [
+      { repLabel: '6 min', repWork: 6, recoveryLabel: '4 min recovery', recoveryTime: 4, maxReps: 4 },
+      { repLabel: '8 min', repWork: 8, recoveryLabel: '4 min recovery', recoveryTime: 4, maxReps: 3 },
+    ],
     threshold: [
       { repLabel: '10 min', repWork: 10, recoveryLabel: '5 min recovery', recoveryTime: 5, maxReps: 4 },
       { repLabel: '15 min', repWork: 15, recoveryLabel: '5 min recovery', recoveryTime: 5, maxReps: 3 },
@@ -756,6 +1276,10 @@ const WORKOUT_STRUCTURE = {
     tempo: [
       { repLabel: '200m', repWork: 3.5, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 5 },
       { repLabel: '300m', repWork: 5.25, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 6 },
+    ],
+    'threshold-lite': [
+      { repLabel: '50m', repWork: 0.75, recoveryLabel: '20s recovery', recoveryTime: 0.33, maxReps: 12 },
+      { repLabel: '100m', repWork: 1.75, recoveryLabel: '20s recovery', recoveryTime: 0.33, maxReps: 8 },
     ],
     threshold: [
       { repLabel: '100m', repWork: 1.75, recoveryLabel: '15s recovery', recoveryTime: 0.25, maxReps: 10 },
@@ -793,7 +1317,13 @@ function buildStructuredSuggestion(discipline, intensity, duration, ftp) {
     const wuLabel = discipline === 'swim' ? `${swimDistanceLabel(warmup)} warm-up${intensity === 'easy' ? ' (drills)' : ''}` : `${warmup} min warm-up`;
     const cdLabel = discipline === 'swim' ? `${swimDistanceLabel(cooldown)} cool-down` : `${cooldown} min cool-down`;
     const shortZone = (discipline === 'bike' && ftp) ? zoneToWattage(env.zone, ftp) : env.zone;
-    return `${wuLabel}\nShort ${shortZone} effort\n${cdLabel}`;
+    const shortQualityLabel =
+      intensity === 'interval' ? 'Short interval set' :
+      intensity === 'threshold' ? 'Short threshold set' :
+      intensity === 'threshold-lite' ? 'Short controlled threshold set' :
+      intensity === 'tempo' ? 'Steady tempo set' :
+      'Short effort';
+    return `${wuLabel}\n${shortQualityLabel} @ ${shortZone}\n${cdLabel}`;
   }
 
   // Find the right tier: use the first where reps fit within maxReps
@@ -827,7 +1357,7 @@ function buildStructuredSuggestion(discipline, intensity, duration, ftp) {
   const zoneLabel = (discipline === 'bike' && ftp) ? zoneToWattage(env.zone, ftp) : env.zone;
 
   // Bike threshold: show sustained blocks with dynamically scaled duration
-  if (discipline === 'bike' && intensity === 'threshold') {
+  if (discipline === 'bike' && (intensity === 'threshold' || intensity === 'threshold-lite')) {
     const workAvailable = duration - warmup - cooldown;
     const totalRecovery = (reps - 1) * chosenTier.recoveryTime;
     const workMins = Math.round((workAvailable - totalRecovery) / reps);
@@ -868,10 +1398,11 @@ function getWorkoutSuggestion(discipline, intensity, isLong, phase, duration, ft
   }
 
   if (discipline === 'swim') {
+    if (isLong) return 'Long swim @ zone 1-2';
     return buildStructuredSuggestion(discipline, intensity, duration || 40, ftp);
   }
 
-  if (intensity === 'threshold' || intensity === 'interval') {
+  if (intensity === 'threshold-lite' || intensity === 'threshold' || intensity === 'interval') {
     return buildStructuredSuggestion(discipline, intensity, duration || 40, ftp);
   }
 
@@ -954,8 +1485,10 @@ function generatePlan(config) {
   const readinessTier = computeReadinessTier(config, fitnessLevels, capacities);
   const riskAssessment = assessPlanRisk(config, capacities, raceType, totalWeeks, readinessTier);
   const riskLevel = riskAssessment.level;
-  const effectiveRecoveryWeeks = recoveryWeeks || riskLevel === 'high';
-  const progressCaps = computeProgressCaps(readinessTier, riskLevel);
+  const feasiblePeakBudget = estimateFeasiblePeakMinutes(config, readinessTier, {
+    conservative: false,
+    phase: 'peak',
+  });
   const startPlan = computeStartingDurations(fitnessLevels, capacities);
   const baseStartDurations = startPlan.startDurations;
   const missingCapacities = startPlan.missingCapacities;
@@ -963,9 +1496,10 @@ function generatePlan(config) {
   // Calculate base and peak minutes per session
   function getMinutesRange(discipline, level) {
     const defaultBase = BASE_MINUTES[discipline]?.[level] || 25;
-    const cappedBase = Math.min(defaultBase, baseStartDurations[discipline] || defaultBase);
-    const peak = PEAK_MINUTES[raceType]?.[discipline]?.[level] || defaultBase * 2;
-    const base = Math.max(CAPACITY_FLOORS[discipline] || 10, cappedBase);
+    const anchoredBase = baseStartDurations[discipline] || defaultBase;
+    const base = Math.max(CAPACITY_FLOORS[discipline] || 10, anchoredBase);
+    const defaultPeak = PEAK_MINUTES[raceType]?.[discipline]?.[level] || defaultBase * 2;
+    const peak = Math.max(defaultPeak, Math.round((base * 1.1) / 5) * 5);
     return { base, peak };
   }
 
@@ -998,8 +1532,10 @@ function generatePlan(config) {
   const weeks = [];
   let trainingWeekIdx = 0;
   let prevWeekDurations = null;
+  let lastNonRecoveryDurations = null;
   let thresholdWeeksByDiscipline = { run: 0, bike: 0, swim: 0 };
   let stableWeeksByDiscipline = { run: 0, bike: 0, swim: 0 };
+  let lastNonRecoveryStableWeeksByDiscipline = { run: 0, bike: 0, swim: 0 };
   let prevWeekWasRecovery = false;
 
   for (let w = 0; w < totalWeeks; w++) {
@@ -1021,6 +1557,14 @@ function generatePlan(config) {
     }
 
     const taperLength = TAPER_WEEKS[raceType] || 2;
+    const trainingWeekNumber = trainingWeekIdx + 1;
+    const weeklyRiskLevel = getRiskLevelForTrainingWeek(
+      riskLevel,
+      riskAssessment,
+      trainingWeekNumber,
+      totalTrainingWeeks
+    );
+    const effectiveRecoveryWeeks = recoveryWeeks || weeklyRiskLevel === 'high';
     const isLastTrainingWeek = trainingWeekIdx === totalTrainingWeeks - 1;
     const isTaperWeek = trainingWeekIdx >= totalTrainingWeeks - taperLength && totalTrainingWeeks > taperLength + 2;
     const isRecoveryWeek = effectiveRecoveryWeeks && ((trainingWeekIdx + 1) % 4 === 0) && !isTaperWeek && !isLastTrainingWeek;
@@ -1063,16 +1607,30 @@ function generatePlan(config) {
     let swimDuration = sessionDuration(swimRange);
 
     // Scale durations so total non-strength volume matches weekly hours target
-    const raceLongMult = LONG_SESSION_MULTIPLIER[raceType] || { run: 1.5, bike: 1.5 };
+    const raceLongMult = LONG_SESSION_MULTIPLIER[raceType] || { run: 1.5, bike: 1.5, swim: 1.3 };
     const longMult = {
       run: Math.min(raceLongMult.run, getLongMultiplierCap(readinessTier, 'run', trainingWeekIdx)),
       bike: Math.min(raceLongMult.bike, getLongMultiplierCap(readinessTier, 'bike', trainingWeekIdx)),
+      swim: Math.min(raceLongMult.swim || 1.3, getLongMultiplierCap(readinessTier, 'swim', trainingWeekIdx)),
     };
     const effRunSessions = isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions;
     const effBikeSessions = isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions;
     const effSwimSessions = isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions;
+    const sessionCounts = { run: effRunSessions, bike: effBikeSessions, swim: effSwimSessions };
 
-    let estimatedTotal = swimDuration * effSwimSessions;
+    const hasLongSwim =
+      swimSessions >= 2 &&
+      (phase === 'build' || phase === 'peak') &&
+      !isRecoveryWeek &&
+      !isTaperWeek &&
+      !isLastTrainingWeek;
+
+    let estimatedTotal = 0;
+    if (effSwimSessions > 0) {
+      const regularSwims = hasLongSwim ? Math.max(0, effSwimSessions - 1) : effSwimSessions;
+      const longSwimEst = hasLongSwim ? Math.min(MAX_LONG_DURATION.swim, swimDuration * longMult.swim) : 0;
+      estimatedTotal += swimDuration * regularSwims + longSwimEst;
+    }
     if (effRunSessions > 0) {
       const hasLongRun = runSessions > 1;
       const regularRuns = hasLongRun ? effRunSessions - 1 : effRunSessions;
@@ -1085,9 +1643,25 @@ function generatePlan(config) {
       estimatedTotal += bikeDuration * regularBikes + longBikeEst;
     }
 
-    const targetMinutes = WEEKLY_HOURS_TARGET[weeklyHours] || 480;
+    const progressionStage = getProgressionStage(trainingWeekNumber, weeklyRiskLevel);
+    const targetMinutes = getEffectiveEnduranceBudget(weeklyHours, strengthSessions, phase);
+    const effectiveStableWeeksByDiscipline =
+      prevWeekWasRecovery && !isRecoveryWeek
+        ? lastNonRecoveryStableWeeksByDiscipline
+        : stableWeeksByDiscipline;
     if (estimatedTotal > 0) {
-      const scaleFactor = Math.min(2.0, Math.max(0.5, targetMinutes / estimatedTotal));
+      const rawScaleFactor = Math.min(2.0, Math.max(0.5, targetMinutes / estimatedTotal));
+      let scaleFactor = rawScaleFactor;
+      if (!isRecoveryWeek && !isTaperWeek && rawScaleFactor > 1.0) {
+        const phaseCap = getPhaseScaleFactorCap(phase, weeklyHours);
+        if (Number.isFinite(phaseCap)) {
+          scaleFactor = Math.min(scaleFactor, phaseCap);
+        }
+      }
+      if (trainingWeekNumber <= EARLY_WEEKS_RAMP_GUARD && rawScaleFactor > 1.0) {
+        const earlyCap = EARLY_SCALE_FACTOR_CAP[trainingWeekNumber];
+        if (earlyCap) scaleFactor = Math.min(scaleFactor, earlyCap);
+      }
       runDuration = Math.max(SESSION_MIN_MINUTES.run, Math.round(runDuration * scaleFactor / 5) * 5);
       bikeDuration = Math.max(SESSION_MIN_MINUTES.bike, Math.round(bikeDuration * scaleFactor / 5) * 5);
       swimDuration = Math.max(SESSION_MIN_MINUTES.swim, Math.round(swimDuration * scaleFactor / 5) * 5);
@@ -1095,15 +1669,34 @@ function generatePlan(config) {
 
     function capRegularDuration(discipline, duration) {
       let capped = duration;
+      const disciplineCaps = getDisciplineProgressCaps(
+        readinessTier, progressionStage, discipline, weeklyRiskLevel
+      );
+      const progressReferenceDurations =
+        prevWeekWasRecovery && !isRecoveryWeek && lastNonRecoveryDurations
+          ? lastNonRecoveryDurations
+          : prevWeekDurations;
       if (trainingWeekIdx === 0) {
         capped = Math.min(capped, baseStartDurations[discipline] || capped);
       }
       if (capacities[discipline] != null && trainingWeekIdx === 0) {
         capped = Math.min(capped, capacities[discipline]);
       }
-      if (prevWeekDurations && prevWeekDurations[discipline] != null) {
-        const prev = prevWeekDurations[discipline];
-        const allowedIncrease = Math.min(prev * progressCaps.pctCap, progressCaps.absMinuteCap);
+      if (progressReferenceDurations && progressReferenceDurations[discipline] != null) {
+        const prev = progressReferenceDurations[discipline];
+        let allowedIncrease = Math.min(prev * disciplineCaps.pctCap, disciplineCaps.absMinuteCap);
+        if (
+          capped > prev &&
+          !isRecoveryWeek &&
+          !isTaperWeek &&
+          trainingWeekNumber > EARLY_WEEKS_RAMP_GUARD
+        ) {
+          allowedIncrease = Math.max(allowedIncrease, MIN_PROGRESS_STEP[discipline] || 5);
+        }
+        if (trainingWeekNumber <= EARLY_WEEKS_RAMP_GUARD && capped > prev) {
+          const earlyCap = EARLY_WEEK_ABS_INCREASE_CAP[trainingWeekNumber];
+          if (earlyCap) allowedIncrease = Math.min(allowedIncrease, earlyCap);
+        }
         capped = Math.min(capped, prev + allowedIncrease);
       }
       const floor = SESSION_MIN_MINUTES[discipline] || CAPACITY_FLOORS[discipline] || 10;
@@ -1116,30 +1709,99 @@ function generatePlan(config) {
 
     function computeLongDuration(discipline, regularDuration, isLongSession) {
       if (!isLongSession) return regularDuration;
-      const multiplier = longMult[discipline] || 1;
+      const disciplineCaps = getDisciplineProgressCaps(
+        readinessTier, progressionStage, discipline, weeklyRiskLevel
+      );
+      const progressReferenceDurations =
+        prevWeekWasRecovery && !isRecoveryWeek && lastNonRecoveryDurations
+          ? lastNonRecoveryDurations
+          : prevWeekDurations;
+      const lowFrequencyLongSettings = getLowFrequencyLongSettings(
+        discipline,
+        sessionCounts[discipline],
+        longMult[discipline] || 1,
+        disciplineCaps.longIncreaseCap,
+        isRecoveryWeek,
+        isTaperWeek,
+        phase,
+        weeklyRiskLevel
+      );
+      const multiplier = lowFrequencyLongSettings.multiplier;
+      const effectiveLongIncreaseCap = lowFrequencyLongSettings.longIncreaseCap;
       const maxLong = MAX_LONG_DURATION[discipline] || regularDuration;
       let longDuration = Math.min(maxLong, Math.round(regularDuration * multiplier / 5) * 5);
-      const longKey = discipline === 'run' ? 'longRun' : 'longBike';
-      if (prevWeekDurations && prevWeekDurations[longKey] != null) {
-        longDuration = Math.min(longDuration, prevWeekDurations[longKey] + progressCaps.longIncreaseCap);
+      const longKey = discipline === 'run' ? 'longRun' : (discipline === 'bike' ? 'longBike' : 'longSwim');
+      if (progressReferenceDurations && progressReferenceDurations[longKey] != null) {
+        longDuration = Math.min(longDuration, progressReferenceDurations[longKey] + effectiveLongIncreaseCap);
+
+        if (progressReferenceDurations[discipline] != null) {
+          const regularIncrease = Math.max(0, regularDuration - progressReferenceDurations[discipline]);
+          const maxLongByRegular = progressReferenceDurations[longKey] + regularIncrease + effectiveLongIncreaseCap;
+          longDuration = Math.min(longDuration, maxLongByRegular);
+        }
       }
       if (trainingWeekIdx === 0 && capacities[discipline] != null) {
         longDuration = Math.min(longDuration, capacities[discipline]);
       }
 
-      // Ensure race-readiness floor for peak long runs when timeline/capacity are adequate.
+      // Ensure race-readiness floor in peak weeks when timeline/capacity are adequate.
       if (
-        discipline === 'run' &&
         phase === 'peak' &&
         !isRecoveryWeek &&
         !isTaperWeek &&
-        riskLevel !== 'high'
+        !isLastTrainingWeek &&
+        weeklyRiskLevel !== 'high'
       ) {
         const timelineMin = TIMELINE_MIN_WEEKS[readinessTier]?.[raceType] || 12;
-        const timelineAdequate = totalWeeks >= timelineMin;
-        const raceRunDemand = estimateRaceDemandMinutes(raceType).run;
-        const peakFloor = Math.round((raceRunDemand * 0.8) / 5) * 5;
-        if (timelineAdequate && capacities.run != null && capacities.run >= peakFloor) {
+        const timelineAdequate = totalTrainingWeeks >= timelineMin;
+        const raceDemand = estimateRaceDemandMinutes(raceType);
+        const floorRatio = DISCIPLINE_PEAK_FLOOR_RATIO[discipline] || 0;
+        const demandForDiscipline = raceDemand[discipline] || 0;
+        if (
+          sessionCounts[discipline] > 0 &&
+          timelineAdequate &&
+          floorRatio > 0 &&
+          demandForDiscipline > 0
+        ) {
+          const singleBikeSupport = getSingleBikeLongRideSupport(
+            discipline,
+            sessionCounts[discipline],
+            phase,
+            weeklyRiskLevel
+          );
+          let peakFloor = Math.round((demandForDiscipline * floorRatio) / 5) * 5;
+          if (prevWeekDurations && prevWeekDurations[longKey] != null) {
+            peakFloor = Math.min(peakFloor, prevWeekDurations[longKey] + effectiveLongIncreaseCap);
+          }
+          const feasibleBudgetLong =
+            discipline === 'run'
+              ? feasiblePeakBudget?.runLong
+              : discipline === 'bike'
+                ? feasiblePeakBudget?.bikeLong
+                : (feasiblePeakBudget?.swimLong ?? feasiblePeakBudget?.swimRegular);
+          let budgetSafeFloor = null;
+          if (Number.isFinite(feasibleBudgetLong) && feasibleBudgetLong > 0) {
+            budgetSafeFloor = Math.round((feasibleBudgetLong * BUDGET_SAFE_FLOOR_RATIO) / 5) * 5;
+            peakFloor = Math.min(peakFloor, budgetSafeFloor);
+          }
+          let capacityConstrainedFloor = null;
+          if (capacities[discipline] != null) {
+            capacityConstrainedFloor = capacities[discipline] + (trainingWeekNumber * effectiveLongIncreaseCap);
+            peakFloor = Math.min(peakFloor, capacityConstrainedFloor);
+          }
+          if (singleBikeSupport?.peakFloorRatio > 0) {
+            let supportedPeakFloor = Math.round((demandForDiscipline * singleBikeSupport.peakFloorRatio) / 5) * 5;
+            if (prevWeekDurations && prevWeekDurations[longKey] != null) {
+              supportedPeakFloor = Math.min(supportedPeakFloor, prevWeekDurations[longKey] + effectiveLongIncreaseCap);
+            }
+            if (Number.isFinite(budgetSafeFloor) && budgetSafeFloor > 0) {
+              supportedPeakFloor = Math.min(supportedPeakFloor, budgetSafeFloor);
+            }
+            if (Number.isFinite(capacityConstrainedFloor) && capacityConstrainedFloor > 0) {
+              supportedPeakFloor = Math.min(supportedPeakFloor, capacityConstrainedFloor);
+            }
+            peakFloor = Math.max(peakFloor, supportedPeakFloor);
+          }
           longDuration = Math.max(longDuration, peakFloor);
         }
       }
@@ -1157,18 +1819,23 @@ function generatePlan(config) {
     const workouts = [];
     const weekThresholdHits = { run: false, bike: false, swim: false };
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions); i++) {
-      const isLong = (i === runSessions - 1 && runSessions > 1) && !isLastTrainingWeek && !isTaperWeek;
-      const proposedIntensity = getSessionIntensity(i, runSessions, polarized, isLong, phase, weeklyHours);
+      const isLong = (i === runSessions - 1 && runSessions > 1) && !isRecoveryWeek && !isLastTrainingWeek && !isTaperWeek;
+      const proposedIntensity = getSessionIntensity(i, runSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber);
       const intensity = gateIntensity(proposedIntensity, 'run', {
         readinessTier,
         phase,
-        riskLevel,
+        riskLevel: weeklyRiskLevel,
         easyDuration: runDuration,
-        stableWeeks: stableWeeksByDiscipline.run,
+        stableWeeks: effectiveStableWeeksByDiscipline.run,
+        preRecoveryStableWeeks: lastNonRecoveryStableWeeksByDiscipline.run,
         thresholdWeeks: thresholdWeeksByDiscipline.run,
         lastWeekWasRecovery: prevWeekWasRecovery,
+        trainingWeekNumber,
+        totalSessions: isRecoveryWeek ? Math.max(1, runSessions - 1) : runSessions,
+        isLong,
+        isRecoveryWeek,
       });
-      if (intensity === 'threshold' || intensity === 'interval') weekThresholdHits.run = true;
+      if (intensity === 'threshold-lite' || intensity === 'threshold' || intensity === 'interval') weekThresholdHits.run = true;
       const runDur = computeLongDuration('run', runDuration, isLong);
       workouts.push({
         discipline: 'run',
@@ -1179,18 +1846,23 @@ function generatePlan(config) {
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions); i++) {
-      const isLong = (i === bikeSessions - 1) && !isLastTrainingWeek && !isTaperWeek;
-      const proposedIntensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase, weeklyHours);
+      const isLong = (i === bikeSessions - 1) && !isRecoveryWeek && !isLastTrainingWeek && !isTaperWeek;
+      const proposedIntensity = getSessionIntensity(i, bikeSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber);
       const intensity = gateIntensity(proposedIntensity, 'bike', {
         readinessTier,
         phase,
-        riskLevel,
+        riskLevel: weeklyRiskLevel,
         easyDuration: bikeDuration,
-        stableWeeks: stableWeeksByDiscipline.bike,
+        stableWeeks: effectiveStableWeeksByDiscipline.bike,
+        preRecoveryStableWeeks: lastNonRecoveryStableWeeksByDiscipline.bike,
         thresholdWeeks: thresholdWeeksByDiscipline.bike,
         lastWeekWasRecovery: prevWeekWasRecovery,
+        trainingWeekNumber,
+        totalSessions: isRecoveryWeek ? Math.max(1, bikeSessions - 1) : bikeSessions,
+        isLong,
+        isRecoveryWeek,
       });
-      if (intensity === 'threshold' || intensity === 'interval') weekThresholdHits.bike = true;
+      if (intensity === 'threshold-lite' || intensity === 'threshold' || intensity === 'interval') weekThresholdHits.bike = true;
       const bikeDur = computeLongDuration('bike', bikeDuration, isLong);
       workouts.push({
         discipline: 'bike',
@@ -1201,22 +1873,32 @@ function generatePlan(config) {
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions); i++) {
-      const proposedIntensity = getSessionIntensity(i, swimSessions, polarized, false, phase, weeklyHours);
+      const isLongSwim =
+        hasLongSwim &&
+        i === ((isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions) - 1);
+      const proposedIntensity = getSessionIntensity(i, swimSessions, polarized, isLongSwim, phase, weeklyHours, trainingWeekNumber);
       const intensity = gateIntensity(proposedIntensity, 'swim', {
         readinessTier,
         phase,
-        riskLevel,
+        riskLevel: weeklyRiskLevel,
         easyDuration: swimDuration,
-        stableWeeks: stableWeeksByDiscipline.swim,
+        stableWeeks: effectiveStableWeeksByDiscipline.swim,
+        preRecoveryStableWeeks: lastNonRecoveryStableWeeksByDiscipline.swim,
         thresholdWeeks: thresholdWeeksByDiscipline.swim,
         lastWeekWasRecovery: prevWeekWasRecovery,
+        trainingWeekNumber,
+        totalSessions: isRecoveryWeek ? Math.max(1, swimSessions - 1) : swimSessions,
+        isLong: isLongSwim,
+        isRecoveryWeek,
       });
-      if (intensity === 'threshold' || intensity === 'interval') weekThresholdHits.swim = true;
+      if (intensity === 'threshold-lite' || intensity === 'threshold' || intensity === 'interval') weekThresholdHits.swim = true;
+      const swimDur = computeLongDuration('swim', swimDuration, isLongSwim);
       workouts.push({
         discipline: 'swim',
-        duration: swimDuration,
+        duration: swimDur,
         intensity,
-        suggestion: getWorkoutSuggestion('swim', intensity, false, phase, swimDuration, null, { readinessTier }),
+        isLong: isLongSwim,
+        suggestion: getWorkoutSuggestion('swim', intensity, isLongSwim, phase, swimDur, null, { readinessTier }),
       });
     }
     for (let i = 0; i < (isRecoveryWeek ? Math.max(1, strengthSessions - 1) : strengthSessions); i++) {
@@ -1243,7 +1925,7 @@ function generatePlan(config) {
     // Sort: long sessions to long day, spread others out
     const longWorkouts = workouts.filter(w => w.isLong);
     const brickWorkout = workouts.find(w => w.isBrick);
-    const regularWorkouts = workouts.filter(w => !w.isLong && !w.isBrick);
+    const regularWorkouts = workouts.filter(w => !w.isBrick && (!w.isLong || w.discipline === 'swim'));
 
     // Place rest on rest days
     restDayIndices.forEach(ri => {
@@ -1389,18 +2071,24 @@ function generatePlan(config) {
       days: daySlots,
       totalSessions,
       readinessTier,
-      riskLevel,
+      riskLevel: weeklyRiskLevel,
+      progressionStage,
     });
 
     const longRunWorkout = workouts.find(work => work.discipline === 'run' && work.isLong);
     const longBikeWorkout = workouts.find(work => work.discipline === 'bike' && work.isLong);
+    const longSwimWorkout = workouts.find(work => work.discipline === 'swim' && work.isLong);
     prevWeekDurations = {
       run: runDuration,
       bike: bikeDuration,
       swim: swimDuration,
       longRun: longRunWorkout ? longRunWorkout.duration : runDuration,
       longBike: longBikeWorkout ? longBikeWorkout.duration : bikeDuration,
+      longSwim: longSwimWorkout ? longSwimWorkout.duration : swimDuration,
     };
+    if (!isRecoveryWeek) {
+      lastNonRecoveryDurations = prevWeekDurations;
+    }
 
     ['run', 'bike', 'swim'].forEach(discipline => {
       if (weekThresholdHits[discipline]) {
@@ -1421,6 +2109,9 @@ function generatePlan(config) {
         stableWeeksByDiscipline[discipline] = 0;
       }
     });
+    if (!isRecoveryWeek) {
+      lastNonRecoveryStableWeeksByDiscipline = { ...stableWeeksByDiscipline };
+    }
     prevWeekWasRecovery = isRecoveryWeek;
 
     trainingWeekIdx++;
@@ -1437,7 +2128,7 @@ function generatePlan(config) {
   return grouped;
 }
 
-function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, phase, weeklyHours) {
+function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, phase, weeklyHours, trainingWeekNumber = 1) {
   const isLowVolume = weeklyHours === 'lt3' || weeklyHours === '3-6';
   const easyOrTempo = isLowVolume ? 'tempo' : 'easy';
 
@@ -1445,10 +2136,14 @@ function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, pha
   if (isLong) return 'easy';
   if (totalSessions <= 1) return easyOrTempo;
 
-  if (phase === 'base') return easyOrTempo;
+  if (phase === 'base') {
+    if (sessionIndex !== 0) return easyOrTempo;
+    if (trainingWeekNumber < BASE_QUALITY_START_WEEK) return easyOrTempo;
+    return 'threshold-lite';
+  }
 
   if (phase === 'build') {
-    if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
+    if (sessionIndex === 0 && totalSessions >= 2) return isLowVolume ? 'threshold-lite' : 'threshold';
     return easyOrTempo;
   }
 
@@ -1459,7 +2154,7 @@ function getSessionIntensity(sessionIndex, totalSessions, polarized, isLong, pha
   }
 
   if (phase === 'taper') {
-    if (sessionIndex === 0 && totalSessions >= 2) return 'threshold';
+    if (sessionIndex === 0 && totalSessions >= 2) return 'threshold-lite';
     return easyOrTempo;
   }
 
@@ -2096,19 +2791,19 @@ function validateConfig(config) {
   };
 
   if (!config.experience || !config.weeklyHours || !config.strongestDiscipline) {
-    result.error = 'Please complete your fitness profile.';
+    result.error = 'Vul je fitnessprofiel volledig in.';
     return result;
   }
   if (!config.raceDate) {
-    result.error = 'Please set a race date.';
+    result.error = 'Kies een wedstrijddatum.';
     return result;
   }
   if (!config.planStart) {
-    result.error = 'Please set a plan start date.';
+    result.error = 'Kies een startdatum voor je schema.';
     return result;
   }
   if (new Date(config.planStart) >= new Date(config.raceDate)) {
-    result.error = 'Plan start must be before race date.';
+    result.error = 'De startdatum van je schema moet voor de wedstrijddatum liggen.';
     return result;
   }
 
@@ -2121,7 +2816,7 @@ function validateConfig(config) {
   for (const input of capacityInputs) {
     if (input.value === '' || input.value == null) continue;
     if (parseCapacityMinutes(input.value, input.max) == null) {
-      result.error = `Please enter a valid ${input.key} capacity in minutes.`;
+      result.error = `Vul een geldige ${DISCIPLINE_LABELS_NL[input.key] || input.key}-capaciteit in minuten in.`;
       return result;
     }
   }
@@ -2137,37 +2832,51 @@ function validateConfig(config) {
 
   if (riskAssessment.level === 'unsafe') {
     result.error =
-      `Unsafe plan setup:\n- ${riskAssessment.reasons.join('\n- ')}\n\n` +
-      'Try moving race date later, selecting a shorter race, reducing weekly sessions, or lowering expected intensity.';
+      `Onveilige schema-instelling:\n- ${riskAssessment.reasons.join('\n- ')}\n\n` +
+      'Probeer de wedstrijddatum later te zetten, een kortere afstand te kiezen, het aantal sessies te verlagen of de verwachte intensiteit te verlagen.';
     return result;
   }
   if (riskAssessment.level === 'high' || riskAssessment.level === 'moderate') {
-    addWarning(`risk-${riskAssessment.level}`, `${riskAssessment.level.toUpperCase()} risk:\n- ${riskAssessment.reasons.join('\n- ')}`);
+    addWarning(
+      `risk-${riskAssessment.level}`,
+      `${(RISK_LEVEL_LABELS_NL[riskAssessment.level] || riskAssessment.level).toUpperCase()} risico:\n- ${riskAssessment.reasons.join('\n- ')}`
+    );
   }
 
   const totalSessions = config.runSessions + config.bikeSessions +
     config.swimSessions + config.strengthSessions;
   if (totalSessions + config.restDays > 10) {
-    addWarning('session-density', 'Too many sessions + rest days for a 7-day week. Some days will have multiple sessions.');
+    addWarning('session-density', 'Te veel sessies plus rustdagen voor een week van 7 dagen. Sommige dagen krijgen meerdere sessies.');
   }
 
   if (capacities.run != null && capacities.run < 20 && config.runSessions >= 3) {
-    addWarning('capacity-run', 'Run capacity is low for 3+ run sessions.');
+    addWarning('capacity-run', 'Je loopcapaciteit is laag voor 3 of meer loopsessies.');
   }
   if (capacities.bike != null && capacities.bike < 45 && config.bikeSessions >= 3) {
-    addWarning('capacity-bike', 'Bike capacity is low for 3+ bike sessions.');
+    addWarning('capacity-bike', 'Je fietscapaciteit is laag voor 3 of meer fietssessies.');
   }
   if (capacities.swim != null && capacities.swim < 15 && config.swimSessions >= 3) {
-    addWarning('capacity-swim', 'Swim capacity is low for 3+ swim sessions.');
+    addWarning('capacity-swim', 'Je zwemcapaciteit is laag voor 3 of meer zwemsessies.');
   }
 
   // Smart weekly-volume warning: guidance only, never a hard block
   const volumeGap = assessWeeklyVolumeGap(config, readinessTier, capacities, weeksToRace);
   if (volumeGap.isGap) {
     const raceLabel = RACE_LABELS[config.raceType] || config.raceType;
+    const currentHoursLabel = WEEKLY_HOURS_LABELS[config.weeklyHours] || config.weeklyHours;
+    const recommendedHoursLabel = volumeGap.recommendedWeeklyHours
+      ? (WEEKLY_HOURS_LABELS[volumeGap.recommendedWeeklyHours] || volumeGap.recommendedWeeklyHours)
+      : null;
+    const strengthContext = (Number(config.strengthSessions) || 0) > 1
+      ? ` Met ${config.strengthSessions} krachtsessies gaat ook ongeveer ${config.strengthSessions * 60} min/week naar krachttraining.`
+      : '';
     const conciseSummary =
-      `Training-volume gap: your current weekly-hours setting may limit peak long sessions to ` +
-      `~${volumeGap.feasible.runLong}m run / ~${volumeGap.feasible.bikeLong}m bike for ${raceLabel}.`;
+      `Mismatch in weekbudget: ${currentHoursLabel} kan te krap zijn om goed voor ${raceLabel} te trainen. ` +
+      `Geschatte piek-lange sessies met dit budget zijn ~${volumeGap.feasible.runLong}m lopen / ` +
+      `~${volumeGap.feasible.bikeLong}m fietsen / ~${volumeGap.feasible.swimLong}m zwemmen.${strengthContext}`;
+    const budgetRecommendation = recommendedHoursLabel
+      ? `Een realistischer weekbudget is waarschijnlijk ${recommendedHoursLabel}.`
+      : 'Ook met deze aanlooptijd kan het huidige weekbudget beperkend blijven voor race-specifiek piekvolume.';
     const suggestionLine = volumeGap.suggestions.join(' ');
 
     const uniqueReasonKeys = [...new Set(volumeGap.reasonKeys)];
@@ -2180,15 +2889,15 @@ function validateConfig(config) {
 
     if (riskAssessment.level === 'high') {
       const riskKey = 'risk-high';
-      const existing = warningMap.get(riskKey) || 'HIGH risk:';
+      const existing = warningMap.get(riskKey) || 'HOOG risico:';
       warningMap.set(
         riskKey,
-        `${existing}\n\n${conciseSummary}\n${suggestionLine}`
+        `${existing}\n\n${conciseSummary}\n${budgetRecommendation}\n${suggestionLine}`
       );
     } else {
       addWarning(
         'volume-gap',
-        `${conciseSummary}\n- ${uniqueReasons.join('\n- ')}\n${suggestionLine}`
+        `${conciseSummary}\n${budgetRecommendation}\n- ${uniqueReasons.join('\n- ')}\n${suggestionLine}`
       );
     }
   }
@@ -2445,23 +3154,11 @@ function createWorkoutBlock(workout, groupIdx, dayIdx, workoutIdx, isTemplate) {
     detailEl.textContent = 'full body';
   } else if (isTemplate) {
     // In template, show intensity instead of duration
-    detailEl.textContent = workout.isLong ? 'long' : (workout.intensity === 'easy' ? 'easy' : workout.intensity);
+    detailEl.textContent = getTemplateIntensityLabel(workout.intensity, workout.isLong);
   } else {
     detailEl.textContent = `${workout.duration} min`;
   }
   block.appendChild(detailEl);
-
-  if (!isTemplate && workout.discipline !== 'rest' && workout.discipline !== 'strength') {
-    const ftp = (currentPlanConfig?.showWattage && currentPlanConfig?.bikeBenchmarkType === 'ftp')
-      ? parseFloat(currentPlanConfig.bikeBenchmarkValue) || null : null;
-    const skipZoneBadge = workout.discipline === 'bike' && ftp && workout.suggestion;
-    if (!skipZoneBadge) {
-      const zoneEl = document.createElement('div');
-      zoneEl.className = 'workout-zone';
-      zoneEl.textContent = getZoneLabel(workout.intensity, workout.discipline, workout.discipline === 'bike' ? ftp : null);
-      block.appendChild(zoneEl);
-    }
-  }
 
   if (!isTemplate && workout.suggestion) {
     const suggEl = document.createElement('div');
@@ -2691,14 +3388,14 @@ document.getElementById('generate-btn').addEventListener('click', () => {
     return;
   }
   if (validation.warnings && validation.warnings.length > 0) {
-    const warningText = `Please review before continuing:\n\n${validation.warnings.join('\n\n')}`;
+    const warningText = `Controleer dit voordat je doorgaat:\n\n${validation.warnings.join('\n\n')}`;
     if (!confirm(warningText)) return;
   }
 
   currentPlanConfig = config;
   const template = generateTemplate(config);
   if (!template) {
-    alert('Could not generate a plan. Check your dates.');
+    alert('Het schema kon niet worden gegenereerd. Controleer je datums.');
     return;
   }
 
@@ -2733,12 +3430,12 @@ document.getElementById('apply-template-btn').addEventListener('click', () => {
     const newGroups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig, currentVacations);
     const totalNew = newGroups.length;
 
-    let msg = `Weeks 1–${lockedCount} have tracked progress and won't change.`;
+    let msg = `Weken 1–${lockedCount} hebben al voortgang en blijven ongewijzigd.`;
     if (totalNew > lockedCount) {
-      msg += ` Weeks ${lockedCount + 1}–${totalNew} will be updated.`;
+      msg += ` Weken ${lockedCount + 1}–${totalNew} worden bijgewerkt.`;
     }
     if (totalNew < lockedCount) {
-      msg += ` The new plan only has ${totalNew} weeks — progress in weeks ${totalNew + 1}–${lockedCount} will be lost.`;
+      msg += ` Het nieuwe schema heeft maar ${totalNew} weken — voortgang in weken ${totalNew + 1}–${lockedCount} gaat verloren.`;
     }
     if (!confirm(msg)) return;
 
@@ -2985,7 +3682,7 @@ document.getElementById('export-download-btn').addEventListener('click', () => {
 });
 
 document.getElementById('delete-btn').addEventListener('click', () => {
-  if (!confirm('Delete your plan and all saved data?')) return;
+  if (!confirm('Je schema en alle opgeslagen gegevens verwijderen?')) return;
   localStorage.removeItem('simpletri-plan');
   localStorage.removeItem('simpletri-config');
   localStorage.removeItem('simpletri-template');
