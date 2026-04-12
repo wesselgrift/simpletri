@@ -46,6 +46,20 @@ function clampLevel(numeric) {
 
 const LEVEL_NUM = { beginner: 0, intermediate: 1, advanced: 2 };
 
+function levelFromNum(n) {
+  if (n <= 0) return 'beginner';
+  if (n >= 2) return 'advanced';
+  return 'intermediate';
+}
+
+function maxLevel(...levels) {
+  const max = levels
+    .map(level => LEVEL_NUM[level])
+    .filter(n => Number.isFinite(n))
+    .reduce((best, curr) => Math.max(best, curr), 0);
+  return levelFromNum(max);
+}
+
 function bumpLevel(level) {
   if (level === 'beginner') return 'intermediate';
   if (level === 'intermediate') return 'advanced';
@@ -121,6 +135,27 @@ function normalizeBikeBenchmark(type, valueStr) {
   return 'beginner';
 }
 
+function normalizeCapacityLevel(discipline, capacityMinutes) {
+  const mins = parseCapacityMinutes(capacityMinutes);
+  if (!mins) return null;
+  if (discipline === 'run') {
+    if (mins >= 60) return 'advanced';
+    if (mins >= 35) return 'intermediate';
+    return 'beginner';
+  }
+  if (discipline === 'bike') {
+    if (mins >= 120) return 'advanced';
+    if (mins >= 60) return 'intermediate';
+    return 'beginner';
+  }
+  if (discipline === 'swim') {
+    if (mins >= 45) return 'advanced';
+    if (mins >= 25) return 'intermediate';
+    return 'beginner';
+  }
+  return null;
+}
+
 function getFitnessLevels(profileData, benchmarkData) {
   const estimated = estimateLevelFromProfile(
     profileData.experience, profileData.weeklyHours, profileData.strongest
@@ -136,10 +171,30 @@ function getFitnessLevels(profileData, benchmarkData) {
     ? normalizeSwimBenchmark(benchmarkData.swimDist, benchmarkData.swimTime)
     : null;
 
+  const runCapacityLevel = normalizeCapacityLevel('run', profileData.runCapacity);
+  const bikeCapacityLevel = normalizeCapacityLevel('bike', profileData.bikeCapacity);
+  const swimCapacityLevel = normalizeCapacityLevel('swim', profileData.swimCapacity);
+
+  const finalRun = maxLevel(estimated.run, runBench, runCapacityLevel);
+  const finalBike = maxLevel(estimated.bike, bikeBench, bikeCapacityLevel);
+  const finalSwim = maxLevel(estimated.swim, swimBench, swimCapacityLevel);
+
   return {
-    run:  { level: runBench  || estimated.run,  source: runBench  ? 'measured' : 'estimated' },
-    bike: { level: bikeBench || estimated.bike, source: bikeBench ? 'measured' : 'estimated' },
-    swim: { level: swimBench || estimated.swim, source: swimBench ? 'measured' : 'estimated' },
+    run: {
+      level: finalRun,
+      source: runBench === finalRun ? 'measured' :
+        runCapacityLevel === finalRun ? 'capacity' : 'estimated'
+    },
+    bike: {
+      level: finalBike,
+      source: bikeBench === finalBike ? 'measured' :
+        bikeCapacityLevel === finalBike ? 'capacity' : 'estimated'
+    },
+    swim: {
+      level: finalSwim,
+      source: swimBench === finalSwim ? 'measured' :
+        swimCapacityLevel === finalSwim ? 'capacity' : 'estimated'
+    },
   };
 }
 
@@ -1071,6 +1126,24 @@ function generatePlan(config) {
       if (trainingWeekIdx === 0 && capacities[discipline] != null) {
         longDuration = Math.min(longDuration, capacities[discipline]);
       }
+
+      // Ensure race-readiness floor for peak long runs when timeline/capacity are adequate.
+      if (
+        discipline === 'run' &&
+        phase === 'peak' &&
+        !isRecoveryWeek &&
+        !isTaperWeek &&
+        riskLevel !== 'high'
+      ) {
+        const timelineMin = TIMELINE_MIN_WEEKS[readinessTier]?.[raceType] || 12;
+        const timelineAdequate = totalWeeks >= timelineMin;
+        const raceRunDemand = estimateRaceDemandMinutes(raceType).run;
+        const peakFloor = Math.round((raceRunDemand * 0.8) / 5) * 5;
+        if (timelineAdequate && capacities.run != null && capacities.run >= peakFloor) {
+          longDuration = Math.max(longDuration, peakFloor);
+        }
+      }
+
       return Math.max(regularDuration, Math.round(longDuration / 5) * 5);
     }
 
@@ -1998,7 +2071,14 @@ function getConfig() {
 
 function configToFitnessLevels(config) {
   return getFitnessLevels(
-    { experience: config.experience, weeklyHours: config.weeklyHours, strongest: config.strongestDiscipline },
+    {
+      experience: config.experience,
+      weeklyHours: config.weeklyHours,
+      strongest: config.strongestDiscipline,
+      runCapacity: config.runCapacity,
+      bikeCapacity: config.bikeCapacity,
+      swimCapacity: config.swimCapacity,
+    },
     {
       runDist: config.runBenchmarkDist, runTime: config.runBenchmarkTime,
       bikeType: config.bikeBenchmarkType, bikeValue: config.bikeBenchmarkValue,
