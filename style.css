@@ -267,6 +267,17 @@ header h1 {
   margin-bottom: 0.3rem;
   color: var(--text);
 }
+.field-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.capacity-helper {
+  margin-bottom: 0.5rem;
+}
+.capacity-helper label {
+  margin-bottom: 0.15rem;
+}
 .field input[type="text"],
 .field input[type="number"],
 .field input[type="date"],
