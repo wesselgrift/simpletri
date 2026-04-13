@@ -1615,6 +1615,163 @@ function getVacationWeekIndices(vacations, planStart, raceDate) {
   return indices;
 }
 
+function getTrainableWeekIndices(totalWeeks, effectiveVacationWeekIndices, raceWeekIdx, raceDayIdx) {
+  const indices = [];
+  for (let weekIdx = 0; weekIdx < totalWeeks; weekIdx++) {
+    const isRaceWeek = weekIdx === raceWeekIdx;
+    const isTrainableRaceWeek = !isRaceWeek || raceDayIdx > 0;
+    if (effectiveVacationWeekIndices.has(weekIdx) || !isTrainableRaceWeek) continue;
+    indices.push(weekIdx);
+  }
+  return indices;
+}
+
+function getEffectiveTaperLength(preRaceTrainingWeekCount, configuredTaperLength) {
+  if (preRaceTrainingWeekCount <= 0) return 0;
+  return Math.max(1, Math.min(configuredTaperLength, preRaceTrainingWeekCount));
+}
+
+function pickSpacedWeekIndices(indices, desiredCount) {
+  const picked = new Set();
+  if (!Array.isArray(indices) || indices.length === 0 || desiredCount <= 0) return picked;
+
+  const actualCount = Math.min(indices.length, desiredCount);
+  if (actualCount === 1) {
+    picked.add(indices[indices.length - 1]);
+    return picked;
+  }
+
+  const spacing = (indices.length - 1) / Math.max(1, actualCount - 1);
+  for (let i = 0; i < actualCount; i++) {
+    const candidate = indices[Math.round(i * spacing)];
+    if (Number.isInteger(candidate)) {
+      picked.add(candidate);
+    }
+  }
+  return picked;
+}
+
+function buildTrainingWeekSchedule({
+  totalWeeks,
+  effectiveVacationWeekIndices,
+  raceWeekIdx,
+  raceDayIdx,
+  raceType,
+  recoveryWeeks,
+  riskLevel,
+  riskAssessment,
+}) {
+  const trainableWeekIndices = getTrainableWeekIndices(
+    totalWeeks,
+    effectiveVacationWeekIndices,
+    raceWeekIdx,
+    raceDayIdx
+  );
+  const trainingWeekIndexByCalendarWeek = new Map();
+  trainableWeekIndices.forEach((weekIdx, idx) => {
+    trainingWeekIndexByCalendarWeek.set(weekIdx, idx);
+  });
+
+  const totalTrainingWeeks = trainableWeekIndices.length;
+  const weeklyRiskLevels = Array.from({ length: totalTrainingWeeks }, (_, idx) =>
+    getRiskLevelForTrainingWeek(riskLevel, riskAssessment, idx + 1, totalTrainingWeeks)
+  );
+
+  const raceTrainingWeekIdxRaw = trainingWeekIndexByCalendarWeek.get(raceWeekIdx);
+  const raceTrainingWeekIdx = Number.isInteger(raceTrainingWeekIdxRaw) ? raceTrainingWeekIdxRaw : null;
+  const preRaceTrainingWeekCount = raceTrainingWeekIdx == null ? totalTrainingWeeks : raceTrainingWeekIdx;
+  const configuredTaperLength = TAPER_WEEKS[raceType] || 2;
+  const taperLength = getEffectiveTaperLength(preRaceTrainingWeekCount, configuredTaperLength);
+  const firstTaperTrainingWeek = Math.max(0, preRaceTrainingWeekCount - taperLength);
+  const taperTrainingWeekSet = new Set();
+  for (let idx = firstTaperTrainingWeek; idx < preRaceTrainingWeekCount; idx++) {
+    taperTrainingWeekSet.add(idx);
+  }
+
+  const recoveryTrainingWeekSet = new Set();
+  const latestRecoveryWeekIdx = Math.max(-1, firstTaperTrainingWeek - 2);
+  let lastRecoveryWeekIdx = null;
+
+  for (let idx = 0; idx < preRaceTrainingWeekCount; idx++) {
+    const recoveryEnabled = recoveryWeeks || weeklyRiskLevels[idx] === 'high';
+    if (!recoveryEnabled || ((idx + 1) % 4 !== 0)) continue;
+
+    for (let candidateIdx = Math.min(idx, latestRecoveryWeekIdx); candidateIdx >= 0; candidateIdx--) {
+      const candidateEnabled = recoveryWeeks || weeklyRiskLevels[candidateIdx] === 'high';
+      if (!candidateEnabled) continue;
+      if (candidateIdx >= firstTaperTrainingWeek - 1) continue;
+      if (lastRecoveryWeekIdx != null && candidateIdx - lastRecoveryWeekIdx < 3) continue;
+      if (recoveryTrainingWeekSet.has(candidateIdx) || taperTrainingWeekSet.has(candidateIdx)) continue;
+
+      recoveryTrainingWeekSet.add(candidateIdx);
+      lastRecoveryWeekIdx = candidateIdx;
+      break;
+    }
+  }
+
+  const loadWeekCount = Math.max(0, firstTaperTrainingWeek - recoveryTrainingWeekSet.size);
+  const baseLoadWeeks = Math.floor(loadWeekCount * PHASE_SPLITS.base);
+  const buildLoadWeeks = Math.floor(loadWeekCount * PHASE_SPLITS.build);
+  const phaseByTrainingWeek = new Map();
+  let completedLoadWeeks = 0;
+
+  for (let idx = 0; idx < totalTrainingWeeks; idx++) {
+    const isRaceTrainingWeek = raceTrainingWeekIdx != null && idx === raceTrainingWeekIdx;
+    if (taperTrainingWeekSet.has(idx) || isRaceTrainingWeek) {
+      phaseByTrainingWeek.set(idx, 'taper');
+      continue;
+    }
+
+    let phase = 'base';
+    if (completedLoadWeeks >= baseLoadWeeks + buildLoadWeeks) phase = 'peak';
+    else if (completedLoadWeeks >= baseLoadWeeks) phase = 'build';
+    phaseByTrainingWeek.set(idx, phase);
+
+    if (!recoveryTrainingWeekSet.has(idx)) {
+      completedLoadWeeks++;
+    }
+  }
+
+  const brickEligibleWeekIndices = [];
+  for (let idx = 0; idx < totalTrainingWeeks; idx++) {
+    if (recoveryTrainingWeekSet.has(idx) || taperTrainingWeekSet.has(idx)) continue;
+    if (raceTrainingWeekIdx != null && idx === raceTrainingWeekIdx) continue;
+    const phase = phaseByTrainingWeek.get(idx);
+    if (phase === 'build' || phase === 'peak') {
+      brickEligibleWeekIndices.push(idx);
+    }
+  }
+
+  const targetBricks = brickEligibleWeekIndices.length > 0
+    ? Math.min(
+        brickEligibleWeekIndices.length,
+        Math.min(6, Math.max(3, Math.round(brickEligibleWeekIndices.length * 0.4)))
+      )
+    : 0;
+  const brickWeekSet = pickSpacedWeekIndices(brickEligibleWeekIndices, targetBricks);
+
+  const targetBigBlocks = brickEligibleWeekIndices.length > 0
+    ? Math.min(
+        brickEligibleWeekIndices.length,
+        Math.min(3, Math.max(2, Math.floor(brickEligibleWeekIndices.length * 0.2)))
+      )
+    : 0;
+  const bigBlockWeekSet = pickSpacedWeekIndices(brickEligibleWeekIndices, targetBigBlocks);
+  bigBlockWeekSet.forEach(idx => brickWeekSet.add(idx));
+
+  return {
+    totalTrainingWeeks,
+    weeklyRiskLevels,
+    taperLength,
+    firstTaperTrainingWeek,
+    taperTrainingWeekSet,
+    recoveryTrainingWeekSet,
+    phaseByTrainingWeek,
+    brickWeekSet,
+    bigBlockWeekSet,
+  };
+}
+
 // === Plan Generation ===
 
 function generatePlan(config) {
@@ -1640,10 +1797,6 @@ function generatePlan(config) {
     [...vacationWeekIndices].filter(idx => idx < totalWeeks && idx !== raceWeekIdx)
   );
   const raceWeekHasTrainingDays = raceDayIdx > 0;
-  const totalTrainingWeeks = Array.from({ length: totalWeeks }, (_, weekIdx) => weekIdx)
-    .filter(weekIdx => !effectiveVacationWeekIndices.has(weekIdx))
-    .filter(weekIdx => weekIdx !== raceWeekIdx || raceWeekHasTrainingDays)
-    .length;
 
   const capacities = getCapacitiesFromConfig(config);
   const fitnessLevels = {
@@ -1654,6 +1807,26 @@ function generatePlan(config) {
   const readinessTier = computeReadinessTier(config, fitnessLevels, capacities);
   const riskAssessment = assessPlanRisk(config, capacities, raceType, totalWeeks, readinessTier);
   const riskLevel = riskAssessment.level;
+  const {
+    totalTrainingWeeks,
+    weeklyRiskLevels,
+    taperLength,
+    firstTaperTrainingWeek,
+    taperTrainingWeekSet,
+    recoveryTrainingWeekSet,
+    phaseByTrainingWeek,
+    brickWeekSet,
+    bigBlockWeekSet,
+  } = buildTrainingWeekSchedule({
+    totalWeeks,
+    effectiveVacationWeekIndices,
+    raceWeekIdx,
+    raceDayIdx,
+    raceType,
+    recoveryWeeks,
+    riskLevel,
+    riskAssessment,
+  });
   const feasiblePeakBudget = estimateFeasiblePeakMinutes(config, readinessTier, {
     conservative: false,
     phase: 'peak',
@@ -1675,28 +1848,6 @@ function generatePlan(config) {
   const runRange = getMinutesRange('run', runLevel);
   const bikeRange = getMinutesRange('bike', bikeLevel);
   const swimRange = getMinutesRange('swim', swimLevel);
-
-  // Pre-calculate which training weeks are brick-eligible (build/peak, non-recovery)
-  const taperLengthPre = TAPER_WEEKS[raceType] || 2;
-  const preTaperWeeksPre = totalTrainingWeeks - taperLengthPre;
-  const baseEndPre = Math.floor(preTaperWeeksPre * PHASE_SPLITS.base);
-  const brickEligibleCount = Math.max(0, totalTrainingWeeks - baseEndPre - taperLengthPre);
-  const TARGET_BRICKS = Math.min(6, Math.max(3, Math.round(brickEligibleCount * 0.4)));
-  const brickSpacing = brickEligibleCount > 0 ? brickEligibleCount / TARGET_BRICKS : 1;
-  const brickWeekSet = new Set();
-  for (let b = 0; b < TARGET_BRICKS; b++) {
-    brickWeekSet.add(baseEndPre + Math.round(b * brickSpacing));
-  }
-
-  // Pre-calculate "big block" weeks where long bike + long run combine on the same day
-  const TARGET_BIG_BLOCKS = Math.min(3, Math.max(2, Math.floor(brickEligibleCount * 0.2)));
-  const bigBlockSpacing = brickEligibleCount > 0 ? brickEligibleCount / TARGET_BIG_BLOCKS : 1;
-  const bigBlockWeekSet = new Set();
-  for (let b = 0; b < TARGET_BIG_BLOCKS; b++) {
-    const weekIdx = baseEndPre + Math.round(b * bigBlockSpacing);
-    bigBlockWeekSet.add(weekIdx);
-    brickWeekSet.add(weekIdx);
-  }
 
   const weeks = [];
   let trainingWeekIdx = 0;
@@ -1728,7 +1879,6 @@ function generatePlan(config) {
       continue;
     }
 
-    const taperLength = TAPER_WEEKS[raceType] || 2;
     const raceWeekSessions = isRaceWeek
       ? getRaceWeekSessionTargets(raceType, {
         run: runSessions,
@@ -1742,24 +1892,20 @@ function generatePlan(config) {
     const weekSwimSessions = raceWeekSessions ? raceWeekSessions.swim : swimSessions;
     const weekStrengthSessions = raceWeekSessions ? raceWeekSessions.strength : strengthSessions;
     const trainingWeekNumber = Math.max(1, Math.min(totalTrainingWeeks || 1, trainingWeekIdx + 1));
-    const weeklyRiskLevel = getRiskLevelForTrainingWeek(
-      riskLevel,
-      riskAssessment,
-      trainingWeekNumber,
-      totalTrainingWeeks
-    );
-    const effectiveRecoveryWeeks = recoveryWeeks || weeklyRiskLevel === 'high';
+    const weeklyRiskLevel = isTrainableRaceWeek
+      ? (weeklyRiskLevels[trainingWeekIdx] || riskLevel)
+      : riskLevel;
     const isLastTrainingWeek = isTrainableRaceWeek && trainingWeekIdx === totalTrainingWeeks - 1;
-    const isTaperWeek = isTrainableRaceWeek && trainingWeekIdx >= totalTrainingWeeks - taperLength && totalTrainingWeeks > taperLength + 2;
+    const isTaperWeek = isTrainableRaceWeek && taperTrainingWeekSet.has(trainingWeekIdx);
     const isRecoveryWeek =
-      effectiveRecoveryWeeks &&
-      ((trainingWeekIdx + 1) % 4 === 0) &&
+      isTrainableRaceWeek &&
+      recoveryTrainingWeekSet.has(trainingWeekIdx) &&
       !isRaceWeek &&
       !isTaperWeek &&
       !isLastTrainingWeek;
 
     // Progress factor based on training weeks only
-    const peakWeek = Math.max(0, totalTrainingWeeks - taperLength - 1);
+    const peakWeek = Math.max(0, firstTaperTrainingWeek - 1);
     const progress = peakWeek > 0 ? Math.min(1, trainingWeekIdx / peakWeek) : 0;
 
     // Volume multiplier
@@ -1774,15 +1920,12 @@ function generatePlan(config) {
     }
 
     // Determine training phase based on training weeks
-    const preTaperWeeks = totalTrainingWeeks - taperLength;
-    let phase = 'base';
-    if (isRaceWeek || isTaperWeek || isLastTrainingWeek) {
+    let phase = isRaceWeek ? 'taper' : 'base';
+    if (isTrainableRaceWeek) {
+      phase = phaseByTrainingWeek.get(trainingWeekIdx) || phase;
+    }
+    if (isTaperWeek || isLastTrainingWeek) {
       phase = 'taper';
-    } else {
-      const baseEnd = Math.floor(preTaperWeeks * PHASE_SPLITS.base);
-      const buildEnd = baseEnd + Math.floor(preTaperWeeks * PHASE_SPLITS.build);
-      if (trainingWeekIdx >= buildEnd) phase = 'peak';
-      else if (trainingWeekIdx >= baseEnd) phase = 'build';
     }
 
     // Calculate session durations for this week
