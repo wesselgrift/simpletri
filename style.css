@@ -753,6 +753,52 @@ header h1 {
   color: var(--taper-badge-text);
 }
 
+/* Recovery week action controls */
+.recovery-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  flex-wrap: wrap;
+}
+.recovery-controls .phase-badge {
+  margin-top: 0;
+}
+.week-action,
+.recovery-shift-btn,
+.recovery-cancel-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.65rem;
+  line-height: 1;
+  padding: 3px 6px;
+  color: var(--text-muted);
+  border-radius: 4px;
+  font-family: inherit;
+}
+.week-action:hover,
+.recovery-shift-btn:hover:not(:disabled),
+.recovery-cancel-btn:hover {
+  background: var(--recovery-badge-bg);
+  color: var(--recovery-badge-text);
+  border-color: var(--recovery-badge-text);
+}
+.recovery-shift-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.mark-recovery-btn {
+  margin-top: 0.3rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.week-row:hover .mark-recovery-btn,
+.week-row:focus-within .mark-recovery-btn,
+.mark-recovery-btn:focus {
+  opacity: 1;
+}
+
 /* Vacation week */
 .vacation-week {
   min-height: 50px;

@@ -1651,6 +1651,48 @@ function pickSpacedWeekIndices(indices, desiredCount) {
   return picked;
 }
 
+function placeRecoveryAnchors({
+  preRaceTrainingWeekCount,
+  firstTaperTrainingWeek,
+  weeklyRiskLevels,
+  recoveryWeeks,
+  anchorTrainingIdxs,
+  unanchorTrainingIdxs,
+}) {
+  const out = new Set();
+  const latestIdx = Math.max(-1, firstTaperTrainingWeek - 2);
+  const isAllowed = (idx) => idx >= 0 && idx <= latestIdx;
+
+  const anchors = [...anchorTrainingIdxs].filter(isAllowed).sort((a, b) => a - b);
+  const unanchors = new Set(unanchorTrainingIdxs);
+
+  // Default cadence within [start, end), respecting >=3-week separation
+  // from a forced anchor at `endAnchor` (if any).
+  const placeDefault = (start, end, endAnchor) => {
+    let lastPlaced = -Infinity;
+    for (let idx = start; idx < end; idx++) {
+      const enabled = recoveryWeeks || weeklyRiskLevels[idx] === 'high';
+      if (!enabled) continue;
+      if (((idx - start + 1) % 4) !== 0) continue; // 4-week cadence from `start`
+      if (idx - lastPlaced < 3) continue;
+      if (endAnchor != null && endAnchor - idx < 3) continue;
+      if (unanchors.has(idx)) continue;
+      if (!isAllowed(idx)) continue;
+      out.add(idx);
+      lastPlaced = idx;
+    }
+  };
+
+  let cursor = 0;
+  for (const a of anchors) {
+    placeDefault(cursor, a, a);
+    out.add(a); // forced anchor wins, even if recoveryWeeks=false
+    cursor = a + 1; // restart cadence
+  }
+  placeDefault(cursor, preRaceTrainingWeekCount, null);
+  return out;
+}
+
 function buildTrainingWeekSchedule({
   totalWeeks,
   effectiveVacationWeekIndices,
@@ -1658,6 +1700,8 @@ function buildTrainingWeekSchedule({
   raceDayIdx,
   raceType,
   recoveryWeeks,
+  recoveryAnchors,
+  recoveryUnanchors,
   riskLevel,
   riskAssessment,
 }) {
@@ -1688,26 +1732,22 @@ function buildTrainingWeekSchedule({
     taperTrainingWeekSet.add(idx);
   }
 
-  const recoveryTrainingWeekSet = new Set();
-  const latestRecoveryWeekIdx = Math.max(-1, firstTaperTrainingWeek - 2);
-  let lastRecoveryWeekIdx = null;
+  // Convert calendar-week anchors to training-week indices (drops vacation/race weeks)
+  const anchorTrainingIdxs = (recoveryAnchors || [])
+    .map(cw => trainingWeekIndexByCalendarWeek.get(cw))
+    .filter(Number.isInteger);
+  const unanchorTrainingIdxs = (recoveryUnanchors || [])
+    .map(cw => trainingWeekIndexByCalendarWeek.get(cw))
+    .filter(Number.isInteger);
 
-  for (let idx = 0; idx < preRaceTrainingWeekCount; idx++) {
-    const recoveryEnabled = recoveryWeeks || weeklyRiskLevels[idx] === 'high';
-    if (!recoveryEnabled || ((idx + 1) % 4 !== 0)) continue;
-
-    for (let candidateIdx = Math.min(idx, latestRecoveryWeekIdx); candidateIdx >= 0; candidateIdx--) {
-      const candidateEnabled = recoveryWeeks || weeklyRiskLevels[candidateIdx] === 'high';
-      if (!candidateEnabled) continue;
-      if (candidateIdx >= firstTaperTrainingWeek - 1) continue;
-      if (lastRecoveryWeekIdx != null && candidateIdx - lastRecoveryWeekIdx < 3) continue;
-      if (recoveryTrainingWeekSet.has(candidateIdx) || taperTrainingWeekSet.has(candidateIdx)) continue;
-
-      recoveryTrainingWeekSet.add(candidateIdx);
-      lastRecoveryWeekIdx = candidateIdx;
-      break;
-    }
-  }
+  const recoveryTrainingWeekSet = placeRecoveryAnchors({
+    preRaceTrainingWeekCount,
+    firstTaperTrainingWeek,
+    weeklyRiskLevels,
+    recoveryWeeks,
+    anchorTrainingIdxs,
+    unanchorTrainingIdxs,
+  });
 
   const loadWeekCount = Math.max(0, firstTaperTrainingWeek - recoveryTrainingWeekSet.size);
   const baseLoadWeeks = Math.floor(loadWeekCount * PHASE_SPLITS.base);
@@ -1824,6 +1864,8 @@ function generatePlan(config) {
     raceDayIdx,
     raceType,
     recoveryWeeks,
+    recoveryAnchors: config.recoveryAnchors || [],
+    recoveryUnanchors: config.recoveryUnanchors || [],
     riskLevel,
     riskAssessment,
   });
@@ -2620,6 +2662,76 @@ function formatWeekDateRange(weekStart) {
 // Store current plan data so we can mutate it on drag
 let currentGroups = [];
 
+// === Recovery action helpers ===
+
+// A week is "locked-past" if it's strictly before the current in-progress
+// (last-tracked) week. The in-progress week itself is still editable.
+function isLockedPastWeek(i) {
+  return i < getLastTrackedWeekIdx();
+}
+
+function isEligibleRecoveryTarget(i) {
+  const g = currentGroups[i];
+  if (!g) return false;
+  const t = g.template;
+  if (t.isVacation || t.isRaceWeek || t.isTaper) return false;
+  return true;
+}
+
+function keyMatchesWeek(key, weekIdx) {
+  // Completion keys are formatted as `${weekIdx}-${dayIdx}-${workoutIdx}`.
+  // Use the literal `${weekIdx}-` prefix and verify the next char is a digit
+  // boundary (i.e. the prefix consumed the whole weekIdx, not just a part).
+  const prefix = `${weekIdx}-`;
+  if (!key.startsWith(prefix)) return false;
+  return true;
+}
+
+function weekHasProgress(i) {
+  for (const k of completedWorkouts) if (keyMatchesWeek(k, i)) return true;
+  for (const k of skippedWorkouts) if (keyMatchesWeek(k, i)) return true;
+  return false;
+}
+
+// Approximate >=3-week separation in calendar-week space. Recovery weeks are
+// typically every ~4 weeks so calendar separation closely tracks training-week
+// separation; using calendar weeks here keeps the UI guard simple.
+function violatesSeparation(targetIdx, ignoreIdx = null) {
+  for (let i = 0; i < currentGroups.length; i++) {
+    if (i === ignoreIdx || i === targetIdx) continue;
+    const g = currentGroups[i];
+    if (!g || !g.template.isRecovery) continue;
+    if (Math.abs(i - targetIdx) < 3) return true;
+  }
+  return false;
+}
+
+function canMarkRecovery(weekIdx) {
+  if (isLockedPastWeek(weekIdx)) return false;
+  if (!isEligibleRecoveryTarget(weekIdx)) return false;
+  if (currentGroups[weekIdx]?.template?.isRecovery) return false;
+  return true;
+}
+
+function canMoveRecovery(weekIdx, target) {
+  if (isLockedPastWeek(weekIdx)) return false;
+  // A week with a stashed partial-recovery override can't be safely "moved"
+  // because we'd lose the keep-completed/replace-rest layout. Out of scope.
+  if (weekOverrides[weekIdx] != null) return false;
+  if (target < 0 || target >= currentGroups.length) return false;
+  if (isLockedPastWeek(target)) return false;
+  if (!isEligibleRecoveryTarget(target)) return false;
+  if (currentGroups[target]?.template?.isRecovery) return false;
+  if (violatesSeparation(target, weekIdx)) return false;
+  return true;
+}
+
+function canCancelRecovery(weekIdx) {
+  if (isLockedPastWeek(weekIdx)) return false;
+  if (weekOverrides[weekIdx] != null) return false; // partial-recovery layout — out of scope
+  return true;
+}
+
 function renderPlan(groups) {
   currentGroups = groups;
   const grid = document.getElementById('plan-grid');
@@ -2690,10 +2802,48 @@ function renderPlan(groups) {
       label.appendChild(progressWrap);
 
       if (group.template.isRecovery) {
-        const badge = document.createElement('div');
+        const controls = document.createElement('div');
+        controls.className = 'recovery-controls';
+
+        const upBtn = document.createElement('button');
+        upBtn.type = 'button';
+        upBtn.className = 'recovery-shift-btn';
+        upBtn.dataset.dir = '-1';
+        upBtn.dataset.weekIdx = String(groupIdx);
+        upBtn.title = 'Move recovery one week earlier';
+        upBtn.setAttribute('aria-label', 'Move recovery one week earlier');
+        upBtn.textContent = '\u25B2';
+        if (!canMoveRecovery(groupIdx, groupIdx - 1)) upBtn.disabled = true;
+        controls.appendChild(upBtn);
+
+        const badge = document.createElement('span');
         badge.className = 'phase-badge phase-recovery';
         badge.textContent = 'RECOVERY';
-        label.appendChild(badge);
+        controls.appendChild(badge);
+
+        const downBtn = document.createElement('button');
+        downBtn.type = 'button';
+        downBtn.className = 'recovery-shift-btn';
+        downBtn.dataset.dir = '1';
+        downBtn.dataset.weekIdx = String(groupIdx);
+        downBtn.title = 'Move recovery one week later';
+        downBtn.setAttribute('aria-label', 'Move recovery one week later');
+        downBtn.textContent = '\u25BC';
+        if (!canMoveRecovery(groupIdx, groupIdx + 1)) downBtn.disabled = true;
+        controls.appendChild(downBtn);
+
+        if (canCancelRecovery(groupIdx)) {
+          const cancelBtn = document.createElement('button');
+          cancelBtn.type = 'button';
+          cancelBtn.className = 'recovery-cancel-btn';
+          cancelBtn.dataset.weekIdx = String(groupIdx);
+          cancelBtn.title = 'Cancel recovery for this week';
+          cancelBtn.setAttribute('aria-label', 'Cancel recovery for this week');
+          cancelBtn.textContent = '\u2715';
+          controls.appendChild(cancelBtn);
+        }
+
+        label.appendChild(controls);
       }
       if (group.template.isTaper && !group.template.isRecovery) {
         const badge = document.createElement('div');
@@ -2706,6 +2856,17 @@ function renderPlan(groups) {
         phaseBadge.className = `phase-badge phase-${group.template.phase}`;
         phaseBadge.textContent = group.template.phase.toUpperCase();
         label.appendChild(phaseBadge);
+      }
+
+      if (canMarkRecovery(groupIdx)) {
+        const markBtn = document.createElement('button');
+        markBtn.type = 'button';
+        markBtn.className = 'week-action mark-recovery-btn';
+        markBtn.dataset.weekIdx = String(groupIdx);
+        markBtn.title = 'Mark this week as a recovery week';
+        markBtn.setAttribute('aria-label', 'Mark this week as a recovery week');
+        markBtn.textContent = '\u002B Recovery';
+        label.appendChild(markBtn);
       }
     }
 
@@ -3106,6 +3267,12 @@ function getConfig() {
     recoveryWeeks: document.getElementById('recovery-weeks').checked,
     showWattage: document.getElementById('show-wattage').checked,
     longDay: parseInt(document.getElementById('long-day').value),
+    recoveryAnchors: Array.isArray(currentPlanConfig?.recoveryAnchors)
+      ? [...currentPlanConfig.recoveryAnchors]
+      : [],
+    recoveryUnanchors: Array.isArray(currentPlanConfig?.recoveryUnanchors)
+      ? [...currentPlanConfig.recoveryUnanchors]
+      : [],
   };
 }
 
@@ -3716,6 +3883,189 @@ function applyTemplateToFullPlan(template, config, vacations) {
   return groups;
 }
 
+// Build a partial-recovery layout for a week that already has progress.
+// Keeps any workout the user marked completed/skipped, drops the rest.
+// Returns { days, completed, skipped } where the latter two are NEW
+// completion-key sets indexed by the new array positions. Caller is
+// responsible for migrating completedWorkouts / skippedWorkouts.
+function buildPartialRecoveryLayout(weekIdx, currentWeek) {
+  const newDays = [];
+  const newCompleted = new Set();
+  const newSkipped = new Set();
+  for (let d = 0; d < 7; d++) {
+    const kept = [];
+    currentWeek.days[d].forEach((w, wIdx) => {
+      const key = `${weekIdx}-${d}-${wIdx}`;
+      const wasCompleted = completedWorkouts.has(key);
+      const wasSkipped = skippedWorkouts.has(key);
+      if (wasCompleted || wasSkipped) {
+        const newKey = `${weekIdx}-${d}-${kept.length}`;
+        if (wasCompleted) newCompleted.add(newKey);
+        if (wasSkipped) newSkipped.add(newKey);
+        kept.push(w);
+      }
+    });
+    if (kept.length === 0) kept.push(buildRestWorkout());
+    newDays.push(kept);
+  }
+  return { days: newDays, completed: newCompleted, skipped: newSkipped };
+}
+
+// Insert into a sorted unique list of integers.
+function sortedUniqueInsert(list, value) {
+  if (list.includes(value)) return list.slice().sort((a, b) => a - b);
+  const next = list.concat(value);
+  next.sort((a, b) => a - b);
+  return next;
+}
+
+// Recovery action handlers — wired via a delegated listener on #plan-grid.
+
+function handleMarkRecovery(weekIdx) {
+  if (!canMarkRecovery(weekIdx)) return;
+
+  const hasProgress = weekHasProgress(weekIdx);
+  if (hasProgress) {
+    const ok = confirm(
+      'Make this week a recovery week? Your remaining planned workouts will be replaced with rest. Completed sessions are kept.'
+    );
+    if (!ok) return;
+  }
+
+  const config = currentPlanConfig;
+  if (!config) return;
+  config.recoveryAnchors = config.recoveryAnchors || [];
+  config.recoveryUnanchors = config.recoveryUnanchors || [];
+
+  // Displace any existing anchor within 3 calendar weeks (avoid clusters).
+  config.recoveryAnchors = config.recoveryAnchors
+    .filter(a => Math.abs(a - weekIdx) >= 3);
+  config.recoveryAnchors = sortedUniqueInsert(config.recoveryAnchors, weekIdx);
+
+  // If the user previously suppressed this default, clear that suppression.
+  config.recoveryUnanchors = config.recoveryUnanchors.filter(u => u !== weekIdx);
+
+  if (hasProgress) {
+    const layout = buildPartialRecoveryLayout(weekIdx, currentGroups[weekIdx].template);
+
+    // Migrate completion/skipped keys for this week: drop old, add remapped.
+    [...completedWorkouts].forEach(k => { if (keyMatchesWeek(k, weekIdx)) completedWorkouts.delete(k); });
+    [...skippedWorkouts].forEach(k => { if (keyMatchesWeek(k, weekIdx)) skippedWorkouts.delete(k); });
+    layout.completed.forEach(k => completedWorkouts.add(k));
+    layout.skipped.forEach(k => skippedWorkouts.add(k));
+
+    weekOverrides[weekIdx] = JSON.parse(JSON.stringify(layout.days));
+  }
+
+  regeneratePreservingLocked();
+}
+
+function handleMoveRecovery(weekIdx, delta) {
+  const target = weekIdx + delta;
+  if (!canMoveRecovery(weekIdx, target)) return;
+
+  const config = currentPlanConfig;
+  if (!config) return;
+  config.recoveryAnchors = config.recoveryAnchors || [];
+  config.recoveryUnanchors = config.recoveryUnanchors || [];
+
+  const wasAnchor = config.recoveryAnchors.includes(weekIdx);
+  if (wasAnchor) {
+    config.recoveryAnchors = config.recoveryAnchors.filter(a => a !== weekIdx);
+  } else {
+    // Suppress this default-cadence recovery so it doesn't reappear.
+    if (!config.recoveryUnanchors.includes(weekIdx)) {
+      config.recoveryUnanchors = config.recoveryUnanchors.concat(weekIdx);
+    }
+  }
+
+  config.recoveryAnchors = sortedUniqueInsert(config.recoveryAnchors, target);
+  config.recoveryUnanchors = config.recoveryUnanchors.filter(u => u !== target);
+
+  regeneratePreservingLocked();
+}
+
+function handleCancelRecovery(weekIdx) {
+  if (!canCancelRecovery(weekIdx)) return;
+
+  const config = currentPlanConfig;
+  if (!config) return;
+  config.recoveryAnchors = config.recoveryAnchors || [];
+  config.recoveryUnanchors = config.recoveryUnanchors || [];
+
+  if (config.recoveryAnchors.includes(weekIdx)) {
+    config.recoveryAnchors = config.recoveryAnchors.filter(a => a !== weekIdx);
+  } else {
+    if (!config.recoveryUnanchors.includes(weekIdx)) {
+      config.recoveryUnanchors = config.recoveryUnanchors.concat(weekIdx);
+    }
+  }
+
+  regeneratePreservingLocked();
+}
+
+function handleRecoveryActionClick(e) {
+  const btn = e.target.closest('[data-week-idx]');
+  if (!btn) return;
+  if (btn.disabled) return;
+  if (
+    !btn.classList.contains('mark-recovery-btn') &&
+    !btn.classList.contains('recovery-shift-btn') &&
+    !btn.classList.contains('recovery-cancel-btn')
+  ) {
+    return;
+  }
+  e.stopPropagation();
+  const weekIdx = parseInt(btn.dataset.weekIdx);
+  if (!Number.isInteger(weekIdx)) return;
+
+  if (btn.classList.contains('mark-recovery-btn')) {
+    handleMarkRecovery(weekIdx);
+  } else if (btn.classList.contains('recovery-shift-btn')) {
+    const delta = parseInt(btn.dataset.dir);
+    if (!Number.isInteger(delta)) return;
+    handleMoveRecovery(weekIdx, delta);
+  } else if (btn.classList.contains('recovery-cancel-btn')) {
+    handleCancelRecovery(weekIdx);
+  }
+}
+
+// Regenerate the full plan from currentPlanConfig, preserving any locked
+// (already-tracked) week layouts. Callers that want a custom override for a
+// specific week (e.g. partial-recovery) must write to weekOverrides BEFORE
+// calling this helper.
+function regeneratePreservingLocked() {
+  if (!currentTemplate || !currentPlanConfig) return;
+
+  const lastTracked = getLastTrackedWeekIdx();
+
+  // 1. Snapshot every locked-past week's current layout into weekOverrides
+  //    if it isn't already overridden.
+  for (let i = 0; i <= lastTracked; i++) {
+    if (currentGroups[i] && weekOverrides[i] == null) {
+      weekOverrides[i] = JSON.parse(JSON.stringify(currentGroups[i].template.days));
+    }
+  }
+
+  // 2. Regenerate from scratch with new anchors flowing through config.
+  const newGroups = applyTemplateToFullPlan(currentTemplate, currentPlanConfig, currentVacations);
+
+  // 3. Apply every override (locked + any caller-supplied partial-recovery).
+  Object.entries(weekOverrides).forEach(([idx, days]) => {
+    const i = parseInt(idx);
+    if (newGroups[i]) {
+      newGroups[i].template.days = JSON.parse(JSON.stringify(days));
+      finalizeRaceWeekLayout(newGroups[i].template);
+      if (!newGroups[i].template.isRaceWeek) {
+        newGroups[i].template.totalSessions = countPlannedSessions(days);
+      }
+    }
+  });
+
+  renderPlan(newGroups);
+  savePlanToStorage();
+}
+
 // === Event Handlers ===
 
 function showSection(id) {
@@ -4089,6 +4439,8 @@ function migrateOldConfig(config) {
   if (config.runCapacity == null) config.runCapacity = '';
   if (config.bikeCapacity == null) config.bikeCapacity = '';
   if (config.swimCapacity == null) config.swimCapacity = '';
+  if (!Array.isArray(config.recoveryAnchors)) config.recoveryAnchors = [];
+  if (!Array.isArray(config.recoveryUnanchors)) config.recoveryUnanchors = [];
 
   if (config.runBenchmark && !config.experience) {
     config.runBenchmarkDist = '5k';
@@ -4246,6 +4598,10 @@ function setupFitnessListeners() {
 
   setupBenchmarkToggle();
   setupFitnessListeners();
+
+  // Delegated listener for recovery action buttons in the plan grid.
+  const planGridEl = document.getElementById('plan-grid');
+  if (planGridEl) planGridEl.addEventListener('click', handleRecoveryActionClick);
 
   // Show intro splash once for new users
   const introSeen = localStorage.getItem('simpletri-intro-seen');
